@@ -269,3 +269,24 @@ create table if not exists outcome_snapshots (
 );
 
 create index if not exists idx_outcome_snapshots_outcome on outcome_snapshots(outcome_id, observed_at);
+
+-- ---- token_price_history ---------------------------------------------------
+-- Canonical per-TOKEN hourly price/volume series, backfilled the moment a token
+-- is flagged (either funnel) and extended forward by the daily outcomes job.
+-- Decoupled from any outcome/report so it's reusable across candidates + the
+-- dashboard; idempotent upsert on (chain, token_address, observed_at).
+create table if not exists token_price_history (
+  id            uuid primary key default gen_random_uuid(),
+  chain         text not null,
+  token_address text not null,
+  observed_at   timestamptz not null,        -- hourly candle open time
+  price_usd     numeric,
+  volume_usd    numeric,
+  mcap_usd      numeric,
+  source        text not null,               -- 'birdeye' | 'bitquery'
+  created_at    timestamptz not null default now(),
+  unique (chain, token_address, observed_at)
+);
+
+create index if not exists idx_token_price_history_token
+  on token_price_history(chain, token_address, observed_at);

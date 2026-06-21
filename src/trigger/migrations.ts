@@ -3,6 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getGmgnProvider, type GmgnProvider } from "@/lib/providers/gmgn";
 import { migrationToCandidate, parseTwitterHandle } from "@/lib/discovery/migration";
 import { analyzeCandidateTask } from "@/trigger/analyze-candidate";
+import { backfillTokenHistoryTask } from "@/trigger/backfill-token-history";
 
 /**
  * Migration funnel: poll GMGN for tokens that just graduated off the bonding
@@ -64,6 +65,13 @@ export async function runMigrations(
     if (ids.length > 0) {
       await analyzeCandidateTask.batchTrigger(ids.map((candidateId) => ({ payload: { candidateId } })));
     }
+  }
+
+  // Backfill each migrated token's price/volume history (token-keyed; idempotent).
+  if (fresh.length > 0) {
+    await backfillTokenHistoryTask.batchTrigger(
+      fresh.map((t) => ({ payload: { chain: t.chain, tokenAddress: t.address } })),
+    );
   }
 
   logger.info("migrations complete", { scanned: tokens.length, inserted, merged });

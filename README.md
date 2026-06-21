@@ -198,6 +198,14 @@ how well the score ranked realized returns (Spearman) and proposes better weight
 candidate for review. (The snapshot series lets richer labels — peak return, max
 drawdown, time-to-peak — be derived later without re-fetching history.)
 
+The moment a token is flagged by either funnel, `backfillTokenHistoryTask`
+(`src/trigger/backfill-token-history.ts`) pulls its **hourly price+volume since
+launch** (Birdeye OHLCV → Bitquery, `src/lib/providers/token-history.ts`) into the
+canonical per-token `token_price_history` table — so a freshly discovered token has
+immediate look-back history instead of waiting 30 days for forward data. The daily
+outcomes job extends that series forward. Idempotent upsert on
+`(chain, token_address, observed_at)`; needs `BIRDEYE_API_KEY` (+ `BITQUERY_API_KEY`).
+
 **Live, full-fidelity labels take ~30 days to mature.** To get history *now*,
 build a **price/fundamentals historical set** from a curated project list:
 

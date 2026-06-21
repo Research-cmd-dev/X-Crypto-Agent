@@ -139,3 +139,15 @@ export interface OutcomeSnapshotRow {
   volume_usd: number | null;
   created_at: string;
 }
+
+export interface TokenPriceHistoryRow {
+  id: string;
+  chain: string;
+  token_address: string;
+  observed_at: string;
+  price_usd: number | null;
+  volume_usd: number | null;
+  mcap_usd: number | null;
+  source: string;
+  created_at: string;
+}

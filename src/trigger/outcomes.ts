@@ -76,6 +76,24 @@ export async function runOutcomes(
         volume_usd: latest.volume24hUsd,
       });
       if (snapErr) logger.warn("snapshot insert failed", { id: row.id, error: snapErr.message });
+
+      // Extend the canonical per-token series forward (current hour bucket).
+      if (row.chain && row.token_address) {
+        const hour = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000).toISOString();
+        const { error: tphErr } = await sb.from("token_price_history").upsert(
+          {
+            chain: row.chain,
+            token_address: row.token_address,
+            observed_at: hour,
+            price_usd: latest.priceUsd,
+            volume_usd: latest.volume24hUsd,
+            mcap_usd: latest.marketCapUsd,
+            source: "gmgn",
+          },
+          { onConflict: "chain,token_address,observed_at", ignoreDuplicates: true },
+        );
+        if (tphErr) logger.warn("token_price_history upsert failed", { id: row.id, error: tphErr.message });
+      }
     }
   });
 

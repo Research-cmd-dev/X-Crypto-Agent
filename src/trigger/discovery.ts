@@ -5,6 +5,7 @@ import { mapLimit } from "@/lib/util/fetch";
 import { extractSolanaToken, reconcileByToken } from "@/lib/discovery/token-link";
 import type { SignalSourceRow } from "@/lib/supabase/types";
 import { analyzeCandidateTask } from "@/trigger/analyze-candidate";
+import { backfillTokenHistoryTask } from "@/trigger/backfill-token-history";
 
 interface DiscoveredCandidate {
   xUserId: string;
@@ -166,6 +167,17 @@ export async function runDiscovery(x: XProvider = getXProvider()): Promise<{
   if (triggerIds.length > 0) {
     await analyzeCandidateTask.batchTrigger(
       triggerIds.map((candidateId) => ({ payload: { candidateId } })),
+    );
+  }
+
+  // Backfill price/volume history for every account that resolved a token
+  // (inserted or merged — both are a subset of `fresh` with a token_address).
+  const backfillTokens = [
+    ...new Set(fresh.map((c) => c.tokenAddress).filter((t): t is string => Boolean(t))),
+  ];
+  if (backfillTokens.length > 0) {
+    await backfillTokenHistoryTask.batchTrigger(
+      backfillTokens.map((tokenAddress) => ({ payload: { chain: "sol", tokenAddress } })),
     );
   }
 

@@ -1,8 +1,10 @@
 import { cached } from "@/lib/cache/store";
 import { fetchWithRetry } from "@/lib/util/fetch";
 import type { PriceHistoryProvider, PriceSnapshot } from "@/lib/providers/price";
+import type { HistorySeriesSource, PricePoint } from "@/lib/providers/token-history";
 
 const BASE = "https://public-api.birdeye.so";
+const RANGE_WINDOW_SECONDS = 1000 * 3600; // Birdeye returns ≤1000 candles/call → page hourly by 1000h
 
 /** Whole-second UNIX timestamp for a date (Birdeye keys history by unixtime). */
 export function toUnixSeconds(date: Date): number {
@@ -24,7 +26,7 @@ export function toUnixSeconds(date: Date): number {
  */
 const DAY_SECONDS = 86_400;
 
-export class BirdeyePriceHistory implements PriceHistoryProvider {
+export class BirdeyePriceHistory implements PriceHistoryProvider, HistorySeriesSource {
   private readonly key?: string;
 
   constructor(key = process.env.BIRDEYE_API_KEY) {
@@ -77,5 +79,39 @@ export class BirdeyePriceHistory implements PriceHistoryProvider {
     const value = body.data?.value ?? body.data?.price ?? null;
     if (value == null) return null;
     return { priceUsd: value, marketCapUsd: null, volume24hUsd: null };
+  }
+
+  /** Hourly price+volume series over [from, to], paginated by ≤1000-candle windows. */
+  async historyRange(mint: string, from: Date, to: Date): Promise<PricePoint[]> {
+    const fromS = toUnixSeconds(from);
+    const toS = toUnixSeconds(to);
+    const out: PricePoint[] = [];
+    for (let start = fromS; start < toS; start += RANGE_WINDOW_SECONDS) {
+      const end = Math.min(start + RANGE_WINDOW_SECONDS, toS);
+      out.push(...(await this.ohlcvRange(mint, start, end)));
+    }
+    return out;
+  }
+
+  private async ohlcvRange(mint: string, fromS: number, toS: number): Promise<PricePoint[]> {
+    return cached("price:birdeye-ohlcv-1h", `${mint}:${fromS}:${toS}`, 2_592_000, async () => {
+      const url =
+        `${BASE}/defi/ohlcv?address=${encodeURIComponent(mint)}&type=1H` +
+        `&time_from=${fromS}&time_to=${toS}`;
+      const res = await fetchWithRetry(url, { headers: this.headers() }).catch(() => null);
+      if (!res || !res.ok) return [];
+      const body = (await res.json()) as {
+        data?: { items?: Array<{ unixTime?: number; c?: number; v?: number; vUsd?: number }> } | null;
+      };
+      const items = body.data?.items ?? [];
+      return items
+        .filter((i) => i.c != null && i.unixTime != null)
+        .map((i) => ({
+          at: new Date((i.unixTime as number) * 1000),
+          priceUsd: i.c as number,
+          volumeUsd: i.vUsd ?? (i.v != null ? i.v * (i.c as number) : null),
+          source: "birdeye",
+        }));
+    });
   }
 }

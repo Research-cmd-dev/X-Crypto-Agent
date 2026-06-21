@@ -1,9 +1,27 @@
 import { cached } from "@/lib/cache/store";
 import { fetchWithRetry } from "@/lib/util/fetch";
 import type { PriceHistoryProvider, PriceSnapshot } from "@/lib/providers/price";
+import type { HistorySeriesSource, PricePoint } from "@/lib/providers/token-history";
 
 const ENDPOINT = "https://streaming.bitquery.io/eapi";
 const DAY_MS = 86_400_000;
+
+// Hourly OHLC buckets over a range: close price (last trade in the hour) + USD volume.
+const RANGE_QUERY = `query ($mint: String!, $since: DateTime!, $till: DateTime!) {
+  Solana(dataset: combined) {
+    DEXTradeByTokens(
+      orderBy: { ascending: Block_Time }
+      where: {
+        Trade: { Currency: { MintAddress: { is: $mint } } }
+        Block: { Time: { since: $since, till: $till } }
+      }
+    ) {
+      Block { Time(interval: { in: hours, count: 1 }) }
+      Trade { close: PriceInUSD(maximum: Block_Time) }
+      volume: sum(of: Trade_AmountInUSD)
+    }
+  }
+}`;
 
 function isoDay(date: Date): { since: string; till: string } {
   const start = new Date(Math.floor(date.getTime() / DAY_MS) * DAY_MS);
@@ -36,7 +54,7 @@ const QUERY = `query ($mint: String!, $since: DateTime!, $till: DateTime!) {
  * (see {@link FallbackPriceHistory}) for tokens/dates Birdeye doesn't cover. Ids
  * ARE the mint address. History is immutable → cached long. Needs BITQUERY_API_KEY.
  */
-export class BitqueryPriceHistory implements PriceHistoryProvider {
+export class BitqueryPriceHistory implements PriceHistoryProvider, HistorySeriesSource {
   private readonly key?: string;
 
   constructor(key = process.env.BITQUERY_API_KEY) {
@@ -77,6 +95,44 @@ export class BitqueryPriceHistory implements PriceHistoryProvider {
         marketCapUsd: null,
         volume24hUsd: vol != null && Number.isFinite(vol) ? vol : null,
       };
+    });
+  }
+
+  /** Hourly price+volume series over [from, to] (one aggregated query). */
+  async historyRange(mint: string, from: Date, to: Date): Promise<PricePoint[]> {
+    if (!this.key) return [];
+    const since = from.toISOString();
+    const till = to.toISOString();
+    return cached("price:bitquery-ohlcv-1h", `${mint}:${since}:${till}`, 2_592_000, async () => {
+      const res = await fetchWithRetry(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.key}` },
+        body: JSON.stringify({ query: RANGE_QUERY, variables: { mint, since, till } }),
+      }).catch(() => null);
+      if (!res || !res.ok) return [];
+      const body = (await res.json()) as {
+        data?: {
+          Solana?: {
+            DEXTradeByTokens?: Array<{
+              Block?: { Time?: string };
+              Trade?: { close?: number };
+              volume?: number | string;
+            }>;
+          } | null;
+        };
+      };
+      const rows = body.data?.Solana?.DEXTradeByTokens ?? [];
+      return rows
+        .filter((r) => r.Trade?.close != null && r.Block?.Time)
+        .map((r) => {
+          const vol = r.volume == null ? null : Number(r.volume);
+          return {
+            at: new Date(r.Block!.Time as string),
+            priceUsd: r.Trade!.close as number,
+            volumeUsd: vol != null && Number.isFinite(vol) ? vol : null,
+            source: "bitquery",
+          };
+        });
     });
   }
 }
