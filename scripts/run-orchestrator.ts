@@ -7,6 +7,7 @@
  * Run with: `npm run scout`
  */
 import { MockXProvider } from "@/lib/providers/x";
+import { MockGmgnProvider } from "@/lib/providers/gmgn";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
 import { runGraph } from "@/lib/orchestrator/graph";
@@ -23,8 +24,8 @@ async function main() {
   process.env.SUPABASE_SERVICE_ROLE_KEY ??= "mock";
 
   const ctx: AgentContext = {
-    candidate: { id: "dev-run", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi" },
-    providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider() },
+    candidate: { id: "dev-run", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi", tokenAddress: null, chain: null },
+    providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider(), gmgn: new MockGmgnProvider() },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null },
     log: (m, meta) => console.log(`[scout] ${m}`, meta ?? ""),

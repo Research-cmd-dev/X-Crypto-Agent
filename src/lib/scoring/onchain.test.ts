@@ -1,9 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { MockGmgnProvider, MOCK_TOKENS } from "@/lib/providers/gmgn";
 import { buildOnchain, smartMoneyNetUsd, insiderRatio, priceFromSummary } from "@/lib/scoring/onchain";
-import { computeScores, securityRedFlags } from "@/lib/schema/scoring";
+import {
+  computeScores,
+  securityRedFlags,
+  socialRedFlags,
+  onchainSmartMoneyScore,
+} from "@/lib/schema/scoring";
 import { makeReport } from "@/lib/schema/fixtures";
-import { analysisReportSchema } from "@/lib/schema/analysis";
+import { analysisReportSchema, type OnChain } from "@/lib/schema/analysis";
 import { toUnixSeconds } from "@/lib/providers/birdeye";
 
 const gmgn = new MockGmgnProvider();
@@ -19,9 +24,9 @@ describe("on-chain flow helpers", () => {
   it("computes smart-money net flow and insider ratio from traders", async () => {
     const gemTraders = await gmgn.topTraders(MOCK_TOKENS.GEM.address);
     const rugTraders = await gmgn.topTraders(MOCK_TOKENS.RUG.address);
-    expect(smartMoneyNetUsd(gemTraders)).toBe(48_000); // 30k + 18k bought, 0 sold
-    expect(insiderRatio(gemTraders)).toBe(0); // no insider/bundler/sniper
-    expect(insiderRatio(rugTraders)).toBe(1); // all top holders are insiders
+    expect(smartMoneyNetUsd(gemTraders)).toBe(48_000);
+    expect(insiderRatio(gemTraders)).toBe(0);
+    expect(insiderRatio(rugTraders)).toBe(1);
   });
 
   it("builds a Zod-valid onchain section and report", async () => {
@@ -33,21 +38,62 @@ describe("on-chain flow helpers", () => {
   });
 });
 
-describe("on-chain scoring", () => {
-  it("scores a smart-money microcap gem as High", async () => {
-    const { summary, onchain } = await onchainFor(MOCK_TOKENS.GEM.address);
-    const report = makeReport({
-      onchain,
-      price: priceFromSummary(summary),
-      redFlags: securityRedFlags(onchain),
-    });
-    const s = computeScores(report);
-    expect(s.smartMoney).toBe(90); // 9 smart wallets + positive net flow
-    expect(s.earliness).toBe(90); // young + good distribution + microcap
-    expect(s.price).toBe(80); // liquidity 0.2
-    expect(s.verdict).toBe("High");
+describe("on-chain + social blend", () => {
+  let gem: OnChain;
+  let gemPrice: ReturnType<typeof priceFromSummary>;
+  beforeAll(async () => {
+    const r = await onchainFor(MOCK_TOKENS.GEM.address);
+    gem = r.onchain;
+    gemPrice = priceFromSummary(r.summary);
   });
 
+  const tokenWithSocial = (smScore: number) =>
+    makeReport({
+      onchain: gem,
+      price: gemPrice,
+      account: { userId: "x123" }, // X resolved → social counts
+      smartMoney: { score: smScore },
+    });
+
+  it("lets the X account move a token's smart-money signal (social always contributes)", () => {
+    const weak = computeScores(tokenWithSocial(20)).smartMoney;
+    const strong = computeScores(tokenWithSocial(80)).smartMoney;
+    expect(strong).toBeGreaterThan(weak); // blend(0.6·90 + 0.4·social)
+    expect(weak).toBeLessThan(onchainSmartMoneyScore(gem)); // weak X drags it below on-chain-only
+  });
+
+  it("ignores social and flags missing_social when no X account is linked", () => {
+    const tokenOnly = makeReport({
+      onchain: gem,
+      price: gemPrice,
+      account: { userId: null }, // no X resolved
+      smartMoney: { score: 20 },
+    });
+    expect(computeScores(tokenOnly).smartMoney).toBe(onchainSmartMoneyScore(gem)); // 90, social ignored
+    expect(socialRedFlags(tokenOnly).map((f) => f.code)).toContain("missing_social");
+  });
+
+  it("scores a gem validated on BOTH on-chain and X as High", () => {
+    const report = makeReport({
+      onchain: gem,
+      price: gemPrice,
+      account: { userId: "x123" },
+      smartMoney: { score: 85 },
+      engagement: { momentumScore: 80 },
+      profile: { followerQuality: { score: 85 } },
+      technicalDepth: { score: 70 },
+      website: { score: 70 },
+      github: { score: 60 },
+      redFlags: [...securityRedFlags(gem)],
+    });
+    const s = computeScores(report);
+    expect(s.earliness).toBe(90);
+    expect(s.price).toBe(80);
+    expect(s.verdict).toBe("High");
+  });
+});
+
+describe("on-chain scoring", () => {
   it("flags and rejects a honeypot / high-concentration rug", async () => {
     const { summary, onchain } = await onchainFor(MOCK_TOKENS.RUG.address);
     const flags = securityRedFlags(onchain);
@@ -58,9 +104,7 @@ describe("on-chain scoring", () => {
     expect(flags.find((f) => f.code === "honeypot")?.severity).toBe("high");
 
     const report = makeReport({ onchain, price: priceFromSummary(summary), redFlags: flags });
-    const s = computeScores(report);
-    expect(s.smartMoney).toBe(20); // no smart money
-    expect(s.verdict).toBe("Avoid");
+    expect(computeScores(report).verdict).toBe("Avoid");
   });
 
   it("falls back to social signals when onchain is absent (unchanged behavior)", () => {

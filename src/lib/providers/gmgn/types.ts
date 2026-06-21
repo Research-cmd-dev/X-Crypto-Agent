@@ -23,6 +23,8 @@ export interface TokenSummary {
   devHoldRate: number | null;
   launchpad: string | null; // pump_fun, raydium, letsbonk, ...
   ageMinutes: number | null;
+  /** Unix seconds the token migrated/graduated to a DEX (null if not a migration item). */
+  migratedAt: number | null;
   /** Socials (populated by tokenInfo; null in rank lists). */
   twitter: string | null;
   website: string | null;
@@ -72,10 +74,12 @@ export interface TrendingOptions {
 }
 
 export interface GmgnProvider {
-  /** Trending tokens (the primary discovery funnel). */
+  /** Trending tokens (a discovery funnel). */
   trending(opts?: TrendingOptions): Promise<TokenSummary[]>;
   /** Newly-launched tokens (trenches / new_creation). */
   newLaunches(opts?: TrendingOptions): Promise<TokenSummary[]>;
+  /** Recently MIGRATED/graduated tokens (bonding curve → DEX) — the primary early funnel. */
+  recentMigrations(opts?: TrendingOptions): Promise<TokenSummary[]>;
   /** Per-token detail incl. socials. */
   tokenInfo(address: string, chain?: string): Promise<TokenSummary | null>;
   /** Per-token security / risk metrics. */

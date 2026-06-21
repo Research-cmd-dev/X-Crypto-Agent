@@ -72,6 +72,7 @@ export function mapTokenSummary(raw: Raw, chain = "sol"): TokenSummary {
     devHoldRate: num(pickFirst(raw, ["dev_team_hold_rate", "creator_token_hold_rate"])),
     launchpad: (pickFirst(raw, ["launchpad", "platform", "pool_type"]) as string | undefined) ?? null,
     ageMinutes,
+    migratedAt: num(pickFirst(raw, ["completed_timestamp", "migrated_at", "graduated_at", "completed_at"])),
     twitter: typeof twitterUser === "string"
       ? (twitterUser.startsWith("http") ? twitterUser : `https://x.com/${twitterUser.replace(/^@/, "")}`)
       : ((link.twitter as string | undefined) ?? null),
@@ -119,7 +120,7 @@ function listOf(body: unknown): Raw[] {
   const d = b?.data as Raw | Raw[] | undefined;
   if (Array.isArray(d)) return d as Raw[];
   if (d && typeof d === "object") {
-    for (const key of ["rank", "list", "tokens", "items", "holders", "traders"]) {
+    for (const key of ["rank", "list", "tokens", "items", "holders", "traders", "completed", "migrated"]) {
       const v = (d as Raw)[key];
       if (Array.isArray(v)) return v as Raw[];
     }
@@ -182,6 +183,19 @@ export class GmgnApiProvider implements GmgnProvider {
 
   newLaunches(opts: TrendingOptions = {}): Promise<TokenSummary[]> {
     return this.rank("/v1/market/trenches", opts);
+  }
+
+  /**
+   * Recently migrated/graduated tokens (`/v1/trenches/migrated`, `data.completed[]`).
+   * No server-side time filter, so the caller dedups against existing candidates
+   * to pick out "new since last poll" (graduation volume is ~1–3 per 30-min poll).
+   */
+  async recentMigrations(opts: TrendingOptions = {}): Promise<TokenSummary[]> {
+    const chain = opts.chain ?? "sol";
+    const body = await cached("gmgn:migrated", chain, 60, () =>
+      this.get("/v1/trenches/migrated", { chain, limit: String(opts.limit ?? 50) }),
+    );
+    return listOf(body).map((r) => mapTokenSummary(r, chain));
   }
 
   async tokenInfo(address: string, chain = "sol"): Promise<TokenSummary | null> {

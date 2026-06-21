@@ -2,13 +2,14 @@ import { describe, it, expect } from "vitest";
 import { runGraph, type GraphAgents } from "@/lib/orchestrator/graph";
 import type { Agent, AgentContext } from "@/lib/agents/types";
 import { MockXProvider } from "@/lib/providers/x";
+import { MockGmgnProvider } from "@/lib/providers/gmgn";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
 
 function ctx(): AgentContext {
   return {
-    candidate: { id: "c1", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi" },
-    providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider() },
+    candidate: { id: "c1", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi", tokenAddress: null, chain: null },
+    providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider(), gmgn: new MockGmgnProvider() },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null },
     log: () => {},
@@ -41,6 +42,7 @@ const fakeAgents = (overrides: Partial<GraphAgents> = {}): GraphAgents => ({
     }),
   },
   price: { name: "price-agent", run: async () => ({ price: { token: null, marketCapUsd: null, volume24hUsd: null, priceUsd: null, source: "none", notes: "" } }) },
+  onchain: { name: "onchain-analyzer", run: async () => ({}) }, // account candidate → no on-chain slice
   ...overrides,
 });
 

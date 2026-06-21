@@ -55,18 +55,30 @@ create trigger trg_signal_sources_updated_at
 -- Discovered projects/accounts awaiting (or having completed) analysis.
 create table if not exists candidates (
   id             uuid primary key default gen_random_uuid(),
-  x_user_id      text not null,              -- X numeric user id (stable)
-  handle         text not null,              -- X handle without @
+  x_user_id      text,                       -- X numeric user id (null for token-only candidates)
+  handle         text not null,              -- X handle (or token symbol when no X yet)
   display_name   text,
+  chain          text,                       -- on-chain candidates: chain slug e.g. 'sol'
+  token_address  text,                       -- on-chain candidates: contract / mint address
   source_id      uuid references signal_sources(id) on delete set null,
-  discovery_note text,                       -- e.g. the tweet/query that surfaced it
+  discovery_note text,                       -- e.g. the migration / tweet / query that surfaced it
   status         candidate_status not null default 'discovered',
   discovered_at  timestamptz not null default now(),
   analyzed_at    timestamptz,
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
-  unique (x_user_id)
+  unique (x_user_id),
+  unique (chain, token_address)
 );
+
+-- Additive migration for existing databases (no-op on fresh installs).
+alter table candidates alter column x_user_id drop not null;
+alter table candidates add column if not exists chain text;
+alter table candidates add column if not exists token_address text;
+do $$ begin
+  alter table candidates add constraint candidates_chain_token_key unique (chain, token_address);
+exception when duplicate_table or duplicate_object then null; end $$;
+create index if not exists idx_candidates_token on candidates(chain, token_address);
 
 drop trigger if exists trg_candidates_updated_at on candidates;
 create trigger trg_candidates_updated_at

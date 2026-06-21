@@ -1,6 +1,8 @@
 import type { AnalysisReport, RedFlag } from "@/lib/schema/analysis";
 import {
   computeScores,
+  securityRedFlags,
+  socialRedFlags,
   DEFAULT_PROFILE,
   type ScoreBreakdown,
   type ScoringProfile,
@@ -50,14 +52,22 @@ export interface ScorerResult {
 }
 
 /**
- * The Scorer: merges structural + LLM red flags, then computes the deterministic
- * weighted score + verdict over the fully-assembled report.
+ * The Scorer: merges structural + on-chain security + social + LLM red flags,
+ * then computes the deterministic weighted score + verdict over the assembled
+ * report. For token (on-chain) candidates the structural social flags
+ * (no_github/no_website) are skipped — they're expected for memecoins and would
+ * just add noise; the on-chain security + social-presence flags apply instead.
  */
 export function runScorer(
   report: AnalysisReport,
   profile: ScoringProfile = DEFAULT_PROFILE,
 ): ScorerResult {
-  const redFlags = mergeRedFlags(report.redFlags, deriveStructuralRedFlags(report));
+  const derived: RedFlag[] = report.onchain
+    ? securityRedFlags(report.onchain)
+    : deriveStructuralRedFlags(report);
+  derived.push(...socialRedFlags(report));
+
+  const redFlags = mergeRedFlags(report.redFlags, derived);
   const scored: AnalysisReport = { ...report, redFlags };
   return { scores: computeScores(scored, profile), redFlags };
 }

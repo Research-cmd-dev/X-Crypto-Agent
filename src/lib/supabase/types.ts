@@ -25,9 +25,11 @@ export interface SignalSourceRow {
 
 export interface CandidateRow {
   id: string;
-  x_user_id: string;
+  x_user_id: string | null;
   handle: string;
   display_name: string | null;
+  chain: string | null;
+  token_address: string | null;
   source_id: string | null;
   discovery_note: string | null;
   status: CandidateStatus;

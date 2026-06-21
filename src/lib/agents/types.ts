@@ -1,12 +1,14 @@
 import type { XProvider, XUser } from "@/lib/providers/x";
 import type { GithubProvider } from "@/lib/providers/github";
 import type { PriceProvider } from "@/lib/providers/price";
+import type { GmgnProvider } from "@/lib/providers/gmgn";
 import type { AnalysisReport } from "@/lib/schema/analysis";
 
 export interface Providers {
   x: XProvider;
   github: GithubProvider;
   price: PriceProvider;
+  gmgn: GmgnProvider;
 }
 
 export interface CandidateRef {
@@ -14,6 +16,9 @@ export interface CandidateRef {
   handle: string;
   xUserId: string | null;
   displayName: string | null;
+  /** Token contract / mint address for on-chain (token) candidates; null for account candidates. */
+  tokenAddress: string | null;
+  chain: string | null;
 }
 
 /**

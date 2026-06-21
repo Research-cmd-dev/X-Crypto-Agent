@@ -197,6 +197,45 @@ export function onchainHolderQualityScore(o: OnChain): number {
 }
 
 /**
+ * Per-signal on-chain share when BOTH an on-chain and a social reading exist for
+ * the same signal (the rest comes from the social side). Centralized + documented
+ * so the on-chain/social balance is visible and adjustable; these could later be
+ * promoted to independently-tunable weights once enough matured live social
+ * samples exist. A project validated on-chain AND socially is the high-conviction
+ * case; a weak/absent X presence drags these signals down (and is flagged).
+ */
+export const BLEND = { smartMoney: 0.6, engagement: 0.5, profile: 0.5 } as const;
+
+/** Combine an on-chain and a social sub-score. Falls back to whichever exists. */
+function blendSignal(onchain: number | null, social: number | null, onchainShare: number): number {
+  if (onchain != null && social != null) return clampScore(onchainShare * onchain + (1 - onchainShare) * social);
+  return clampScore(onchain ?? social ?? 50);
+}
+
+/**
+ * Scam/credibility red flags from the SOCIAL layer (complement to
+ * {@link securityRedFlags} from the on-chain layer). A migrated token with no
+ * linked X account, or a brand-new burner account, are documented scam tells.
+ */
+export function socialRedFlags(report: AnalysisReport): RedFlag[] {
+  const flags: RedFlag[] = [];
+  const hasOnchain = report.onchain != null;
+  const socialPresent = report.account.userId != null;
+  if (hasOnchain && !socialPresent) {
+    flags.push({ severity: "med", code: "missing_social", message: "No linked X account found for this token." });
+    return flags;
+  }
+  if (socialPresent && report.account.createdAt) {
+    const ms = Date.parse(report.account.createdAt);
+    if (!Number.isNaN(ms)) {
+      const days = (Date.now() - ms) / 86_400_000;
+      if (days < 7) flags.push({ severity: "med", code: "fresh_account", message: `X account is only ${Math.max(0, Math.floor(days))}d old.` });
+    }
+  }
+  return flags;
+}
+
+/**
  * Map on-chain security/risk metrics to red flags so they flow through the
  * existing {@link redFlagPenalty} machinery (no new weight key needed). The
  * on-chain analyzer merges these into `report.redFlags`.
@@ -258,17 +297,21 @@ export function toVerdict(
 }
 
 /**
- * Per-signal clamped sub-scores (before weighting). For on-chain token
- * candidates (`report.onchain` present) the smart-money / momentum / holder-
- * quality signals are sourced on-chain; otherwise from the social report.
+ * Per-signal clamped sub-scores (before weighting). The smart-money / momentum /
+ * holder-quality signals BLEND the on-chain and social layers when both are
+ * present (a token with a resolved X account), so X analysis always carries
+ * weight; they fall back to whichever layer exists. The remaining signals are
+ * social (technicalDepth/website/github) or market (price/earliness).
  */
 function subScores(report: AnalysisReport): Record<keyof typeof ALPHA_WEIGHTS, number> {
   const o = report.onchain;
+  const socialPresent = report.account.userId != null;
+  const soc = (v: number): number | null => (socialPresent ? clampScore(v) : null);
   return {
-    smartMoney: o ? onchainSmartMoneyScore(o) : clampScore(report.smartMoney.score),
-    engagement: o ? onchainMomentumScore(o) : clampScore(report.engagement.momentumScore),
+    smartMoney: blendSignal(o ? onchainSmartMoneyScore(o) : null, soc(report.smartMoney.score), BLEND.smartMoney),
+    engagement: blendSignal(o ? onchainMomentumScore(o) : null, soc(report.engagement.momentumScore), BLEND.engagement),
     earliness: earlinessScore(report),
-    profile: o ? onchainHolderQualityScore(o) : clampScore(report.profile.followerQuality.score),
+    profile: blendSignal(o ? onchainHolderQualityScore(o) : null, soc(report.profile.followerQuality.score), BLEND.profile),
     technicalDepth: clampScore(report.technicalDepth.score),
     website: clampScore(report.website.score),
     github: clampScore(report.github.score),

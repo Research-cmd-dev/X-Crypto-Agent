@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabase/server";
 import { getXProvider } from "@/lib/providers/x";
+import { getGmgnProvider } from "@/lib/providers/gmgn";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
 import type { AgentContext, Providers } from "@/lib/agents/types";
@@ -12,12 +13,13 @@ import { loadActiveProfile } from "@/lib/scoring/profile";
 export { runGraph } from "@/lib/orchestrator/graph";
 export type { GraphResult, NodeError } from "@/lib/orchestrator/state";
 
-/** Production provider bundle (real X API v2, GitHub, price). */
+/** Production provider bundle (real X API v2, GitHub, price, GMGN on-chain). */
 export function defaultProviders(): Providers {
   return {
     x: getXProvider(),
     github: new GithubProvider(),
     price: new PriceProvider(),
+    gmgn: getGmgnProvider(),
   };
 }
 
@@ -56,6 +58,8 @@ export async function analyzeCandidate(
       handle: candidate.handle,
       xUserId: candidate.x_user_id,
       displayName: candidate.display_name,
+      tokenAddress: candidate.token_address ?? null,
+      chain: candidate.chain ?? null,
     },
     providers: opts.providers ?? defaultProviders(),
     xUser: null,

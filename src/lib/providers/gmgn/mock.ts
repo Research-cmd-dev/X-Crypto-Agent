@@ -29,6 +29,7 @@ const GEM: TokenSummary = {
   devHoldRate: 0.02,
   launchpad: "pump_fun",
   ageMinutes: 60 * 24 * 12, // ~12 days
+  migratedAt: Math.floor(Date.now() / 1000) - 600, // migrated ~10 min ago
   twitter: "https://x.com/gemcoin",
   website: "https://gemcoin.xyz",
 };
@@ -50,6 +51,7 @@ const RUG: TokenSummary = {
   devHoldRate: 0.35,
   launchpad: "pump_fun",
   ageMinutes: 60 * 6, // 6 hours
+  migratedAt: Math.floor(Date.now() / 1000) - 300, // migrated ~5 min ago
   twitter: null,
   website: null,
 };
@@ -71,6 +73,7 @@ const DUD: TokenSummary = {
   devHoldRate: 0.04,
   launchpad: "raydium",
   ageMinutes: 60 * 24 * 200, // ~200 days
+  migratedAt: null, // old token, not a recent migration
   twitter: "https://x.com/dudtoken",
   website: null,
 };
@@ -135,6 +138,11 @@ export class MockGmgnProvider implements GmgnProvider {
   }
 
   async newLaunches(): Promise<TokenSummary[]> {
+    return [GEM, RUG];
+  }
+
+  /** A clean migrated gem (with X) + a freshly-migrated rug (no X). */
+  async recentMigrations(): Promise<TokenSummary[]> {
     return [GEM, RUG];
   }
 
