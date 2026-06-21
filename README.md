@@ -152,10 +152,17 @@ dashboard as each candidate is analyzed.
 ```
 overall = 0.25·profile + 0.20·website + 0.20·github
         + 0.15·engagement + 0.10·technicalDepth + 0.10·price
-        − redFlagPenalty            (high −15 / med −7 / low −3, floored at 0)
+        − redFlagPenalty            (floored at 0)
 
 verdict = overall ≥ 70 → High | ≥ 40 → Monitor | else Avoid
 ```
+
+`redFlagPenalty` (per-severity weights high −12 / med −5 / low −2) is intentionally
+**not** a raw sum: flags apply strongest-first with diminishing returns
+(`RED_FLAG_DECAY`) and the total is capped (`MAX_RED_FLAG_PENALTY`). This de-rates
+a project by its risks instead of letting a pile of model-emitted flags auto-fail
+an otherwise strong one — and it dampens run-to-run variance in how many flags the
+model surfaces.
 
 The price/liquidity sub-score is derived from 24h-volume-to-market-cap
 (pre-token projects are treated as neutral). Tune the weights/thresholds in one

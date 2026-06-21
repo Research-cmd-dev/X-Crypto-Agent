@@ -44,14 +44,30 @@ describe("toVerdict", () => {
 });
 
 describe("redFlagPenalty", () => {
-  it("sums severities", () => {
+  it("applies a single flag at full weight", () => {
+    expect(redFlagPenalty([{ severity: "high", code: "a", message: "" }])).toBe(12);
+    expect(redFlagPenalty([{ severity: "med", code: "a", message: "" }])).toBe(5);
+    expect(redFlagPenalty([{ severity: "low", code: "a", message: "" }])).toBe(2);
+  });
+
+  it("discounts additional flags (diminishing returns, strongest-first)", () => {
+    // 12 + 5*0.6 + 2*0.36 = 15.72 -> 16
     expect(
       redFlagPenalty([
+        { severity: "low", code: "c", message: "" },
         { severity: "high", code: "a", message: "" },
         { severity: "med", code: "b", message: "" },
-        { severity: "low", code: "c", message: "" },
       ]),
-    ).toBe(25);
+    ).toBe(16);
+  });
+
+  it("caps total drag so flag-stacking can't zero a strong project", () => {
+    const tenHigh = Array.from({ length: 10 }, (_, i) => ({
+      severity: "high" as const,
+      code: `h${i}`,
+      message: "",
+    }));
+    expect(redFlagPenalty(tenHigh)).toBeLessThanOrEqual(30);
   });
 });
 

@@ -11,12 +11,29 @@ export const WEIGHTS = {
   price: 0.1,
 } as const;
 
-/** Red-flag penalty subtracted from the overall (per flag), floored at 0. */
+/**
+ * Red-flag penalties, subtracted from the weighted base (floored at 0 in
+ * `computeScores`). Three guards stop a handful of flags from auto-failing an
+ * otherwise strong project — a real one (e.g. a credible, shipping team that
+ * happens to launch via pump.fun) should be *de-rated by* its risks, not zeroed:
+ *   1. Modest per-severity weights.
+ *   2. Diminishing returns — flags apply strongest-first, each subsequent one
+ *      discounted by RED_FLAG_DECAY. Piling on correlated flags (and the
+ *      run-to-run variance in how many the model emits) then has limited
+ *      marginal effect.
+ *   3. MAX_RED_FLAG_PENALTY caps the total drag.
+ */
 export const RED_FLAG_PENALTY: Record<RedFlag["severity"], number> = {
-  high: 15,
-  med: 7,
-  low: 3,
+  high: 12,
+  med: 5,
+  low: 2,
 };
+
+/** Each additional (lower-ranked) flag is discounted by this factor. */
+export const RED_FLAG_DECAY = 0.6;
+
+/** Hard cap on the total red-flag penalty. */
+export const MAX_RED_FLAG_PENALTY = 30;
 
 /** Verdict thresholds on the overall score. */
 export const VERDICT_THRESHOLDS = { high: 70, monitor: 40 } as const;
@@ -57,7 +74,12 @@ export function priceContextScore(price: Price): number {
 }
 
 export function redFlagPenalty(flags: RedFlag[]): number {
-  return flags.reduce((sum, f) => sum + (RED_FLAG_PENALTY[f.severity] ?? 0), 0);
+  const weights = flags
+    .map((f) => RED_FLAG_PENALTY[f.severity] ?? 0)
+    .filter((w) => w > 0)
+    .sort((a, b) => b - a); // strongest first
+  const raw = weights.reduce((sum, w, i) => sum + w * RED_FLAG_DECAY ** i, 0);
+  return Math.min(MAX_RED_FLAG_PENALTY, Math.round(raw));
 }
 
 export function toVerdict(overall: number): Verdict {
