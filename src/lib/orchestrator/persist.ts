@@ -31,6 +31,8 @@ export async function persistResult(
   const { error: scoreErr } = await sb.from("scores").insert({
     candidate_id: candidateId,
     report_id: reportId,
+    smart_money: s.smartMoney,
+    earliness: s.earliness,
     profile: s.profile,
     website: s.website,
     github: s.github,

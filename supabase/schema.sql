@@ -96,6 +96,8 @@ create table if not exists scores (
   id              uuid primary key default gen_random_uuid(),
   candidate_id    uuid not null references candidates(id) on delete cascade,
   report_id       uuid not null references analysis_reports(id) on delete cascade,
+  smart_money     integer not null default 0,
+  earliness       integer not null default 0,
   profile         integer not null default 0,
   website         integer not null default 0,
   github          integer not null default 0,
@@ -106,6 +108,10 @@ create table if not exists scores (
   verdict         verdict not null,
   created_at      timestamptz not null default now()
 );
+
+-- Additive migration for existing databases (no-op on fresh installs).
+alter table scores add column if not exists smart_money integer not null default 0;
+alter table scores add column if not exists earliness integer not null default 0;
 
 create index if not exists idx_scores_candidate on scores(candidate_id);
 create index if not exists idx_scores_report on scores(report_id);
@@ -135,7 +141,21 @@ select distinct on (s.candidate_id)
   s.candidate_id,
   s.id          as score_id,
   s.report_id,
+  s.smart_money, s.earliness,
   s.profile, s.website, s.github, s.engagement, s.technical_depth, s.price,
   s.overall, s.verdict, s.created_at
 from scores s
 order by s.candidate_id, s.created_at desc;
+
+-- ---- provider_cache --------------------------------------------------------
+-- TTL cache for external provider responses (X / GitHub / price), shared across
+-- Trigger.dev job runs so repeat lookups don't re-hit rate-limited APIs.
+create table if not exists provider_cache (
+  key         text primary key,            -- "<namespace>:<id>"
+  namespace   text not null,
+  value       jsonb not null,
+  expires_at  timestamptz not null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_provider_cache_expires on provider_cache(expires_at);

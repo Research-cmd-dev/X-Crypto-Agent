@@ -119,6 +119,16 @@ Produce the structured analysis now.`,
     // 5. Override hard metrics with real X data; set hints for downstream agents.
     const avgLikes = avg(tweets.map((t) => t.likeCount));
     const avgReposts = avg(tweets.map((t) => t.repostCount));
+    const avgEngagement = avg(
+      tweets.map((t) => t.likeCount + t.repostCount + t.replyCount),
+    );
+    // Engagement rate: avg total engagement per post as a % of followers.
+    // For low-float gems, a high rate on a small account signals a real, sticky
+    // community — a core alpha tell.
+    const engagementRate =
+      avgEngagement != null && user.followersCount > 0
+        ? Math.round((avgEngagement / user.followersCount) * 10000) / 100
+        : null;
     const profileUrls = [
       ...user.urls,
       ...tweets.flatMap((t) => t.urls),
@@ -150,7 +160,9 @@ Produce the structured analysis now.`,
         ...out.engagement,
         avgLikes: avgLikes ?? out.engagement.avgLikes,
         avgReposts: avgReposts ?? out.engagement.avgReposts,
+        engagementRate: engagementRate ?? out.engagement.engagementRate,
       },
+      smartMoney: out.smartMoney,
       developers: out.developers,
       technicalDepth: out.technicalDepth,
       redFlags: out.redFlags,

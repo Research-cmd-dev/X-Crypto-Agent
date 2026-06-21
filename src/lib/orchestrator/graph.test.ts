@@ -21,7 +21,8 @@ const fakeAgents = (overrides: Partial<GraphAgents> = {}): GraphAgents => ({
     run: async () => ({
       account: { handle: "exampledefi", userId: "1001", displayName: "ExampleDeFi", bio: null, verified: false, createdAt: null, location: null },
       profile: { followerCount: 48000, followingCount: 210, followerRatio: 228.6, followerSpikes: [], followerQuality: { score: 80, notes: "real" }, notableFollowers: [] },
-      engagement: { momentumScore: 75, avgLikes: 800, avgReposts: 200, cadence: "daily", notes: "" },
+      engagement: { momentumScore: 75, engagementRate: 6.5, avgLikes: 800, avgReposts: 200, cadence: "daily", notes: "" },
+      smartMoney: { score: 85, notes: "Followed early by two reputable funds." },
       technicalDepth: { score: 70, notes: "" },
       developers: [{ handle: "devone", name: null, githubUrl: "https://github.com/exampledefi", signals: [], qualityNote: "core" }],
       redFlags: [],
