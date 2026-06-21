@@ -1,27 +1,39 @@
 /**
- * Build a HISTORICAL backtest set from a curated project list, using CoinGecko
- * price history (the only signals that are time-travelable) + immutable account
- * age. Each entry becomes a matured `outcomes` row tagged `dataset='historical'`.
+ * Build a HISTORICAL backtest set from a curated project list. Look-back price is
+ * sourced per entry: BIRDEYE for Solana mints (which CoinGecko doesn't index),
+ * CoinGecko otherwise. Each entry becomes a matured `outcomes` row tagged
+ * `dataset='historical'`. Only price + earliness are reconstructable as-of-T
+ * (smart-money / social at T are not), so those are the measured signals.
  *
  *   npm run backfill                       # reads data/historical-projects.json, writes to DB
  *   npm run backfill -- --dry-run          # fetch + print only, no DB writes
  *   npm run backfill -- path/to/list.json  # custom list path
  *
  * List format (see data/historical-projects.example.json):
- *   [{ "handle": "proj", "coingeckoId": "proj-token", "token": "PROJ",
- *      "entryDate": "2024-09-01", "horizonDays": 30 }]
+ *   CoinGecko: { "handle", "coingeckoId"?, "token"?, "entryDate", "horizonDays"? }
+ *   Solana:    { "handle", "chain": "sol", "tokenAddress": "<mint>", "token"?,
+ *                "entryDate", "horizonDays"?, "totalSupply"?, "launchDate"? }
+ * `totalSupply` lets mcap be estimated (price × supply); `launchDate` gives token
+ * age for earliness.
  *
- * Requires network (CoinGecko, X). DB writes require Supabase env. Free-tier
- * CoinGecko limits history to ~365 days and is rate-limited — keep entry dates
- * within the last year; the script throttles to 1 request at a time.
+ * Requires network (CoinGecko / Birdeye, X). DB writes require Supabase env.
+ * Birdeye needs BIRDEYE_API_KEY; CoinGecko free history is ~365 days. Throttled
+ * to 1 request at a time.
  */
 import { readFileSync } from "node:fs";
-import { PriceProvider } from "@/lib/providers/price";
+import { PriceProvider, type PriceSnapshot } from "@/lib/providers/price";
+import { BirdeyePriceHistory } from "@/lib/providers/birdeye";
 import { getXProvider, type XProvider } from "@/lib/providers/x";
 import { mapLimit } from "@/lib/util/fetch";
 import { computeScores } from "@/lib/schema/scoring";
 import { forwardReturn } from "@/lib/scoring/outcome";
-import { buildHistoricalReport, MEASURED_SIGNALS } from "@/lib/scoring/historical";
+import {
+  buildHistoricalReport,
+  historySourceKind,
+  estimateMcap,
+  MEASURED_SIGNALS,
+  type HistoricalInput,
+} from "@/lib/scoring/historical";
 import { loadActiveProfile } from "@/lib/scoring/profile";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -29,6 +41,10 @@ interface Entry {
   handle: string;
   coingeckoId?: string;
   token?: string;
+  chain?: string;
+  tokenAddress?: string;
+  totalSupply?: number;
+  launchDate?: string; // YYYY-MM-DD
   entryDate: string; // YYYY-MM-DD
   horizonDays?: number;
 }
@@ -49,6 +65,7 @@ async function main() {
   console.log(`Loaded ${entries.length} project(s) from ${path}${dryRun ? " (dry run)" : ""}.`);
 
   const price = new PriceProvider();
+  const birdeye = new BirdeyePriceHistory();
   // X only supplies the immutable created_at (age signal); make it best-effort so
   // a dry run works with just CoinGecko (no X_API_BEARER_TOKEN / Supabase env).
   let x: XProvider | null = null;
@@ -79,17 +96,46 @@ async function main() {
       return;
     }
 
-    const coinId = entry.coingeckoId ?? (await price.coinIdFor(entry.token ?? entry.handle));
-    if (!coinId) {
-      console.warn(`  skip ${entry.handle}: could not resolve a CoinGecko coin id`);
-      skipped++;
-      return;
+    const kind = historySourceKind(entry);
+    let baseline: PriceSnapshot | null;
+    let outcome: PriceSnapshot | null;
+    let idLabel: string;
+    let source: string;
+    let onchain: HistoricalInput["onchain"];
+
+    if (kind === "birdeye") {
+      const mint = entry.tokenAddress;
+      if (!mint) {
+        console.warn(`  skip ${entry.handle}: Solana entry needs a "tokenAddress" (mint)`);
+        skipped++;
+        return;
+      }
+      idLabel = mint;
+      source = "birdeye-history";
+      const b = await birdeye.historyOn(mint, entryDate);
+      const o = await birdeye.historyOn(mint, outcomeDate);
+      // Birdeye returns spot price; estimate mcap from supply when provided.
+      baseline = b ? { ...b, marketCapUsd: b.marketCapUsd ?? estimateMcap(b.priceUsd, entry.totalSupply) } : null;
+      outcome = o ? { ...o, marketCapUsd: o.marketCapUsd ?? estimateMcap(o.priceUsd, entry.totalSupply) } : null;
+      const launchMs = entry.launchDate ? new Date(`${entry.launchDate}T00:00:00Z`).getTime() : NaN;
+      const ageDays = Number.isNaN(launchMs) ? null : (entryDate.getTime() - launchMs) / MS_PER_DAY;
+      onchain = { chain: entry.chain ?? "sol", tokenAddress: mint, ageDays: ageDays != null && ageDays >= 0 ? ageDays : null };
+    } else {
+      const coinId = entry.coingeckoId ?? (await price.coinIdFor(entry.token ?? entry.handle));
+      if (!coinId) {
+        console.warn(`  skip ${entry.handle}: could not resolve a CoinGecko coin id`);
+        skipped++;
+        return;
+      }
+      idLabel = coinId;
+      source = "coingecko-history";
+      baseline = await price.historyOn(coinId, entryDate);
+      outcome = await price.historyOn(coinId, outcomeDate);
+      onchain = undefined;
     }
 
-    const baseline = await price.historyOn(coinId, entryDate);
-    const outcome = await price.historyOn(coinId, outcomeDate);
     if (!baseline) {
-      console.warn(`  skip ${entry.handle}: no price history for '${coinId}' on ${entry.entryDate}`);
+      console.warn(`  skip ${entry.handle}: no ${kind} price history for '${idLabel}' on ${entry.entryDate}`);
       skipped++;
       return;
     }
@@ -105,16 +151,17 @@ async function main() {
       return;
     }
 
-    const xUser = x ? await x.getUserByHandle(entry.handle).catch(() => null) : null;
-    const token = entry.token ?? coinId.toUpperCase();
+    // Solana entries use token age for earliness, so the X account isn't needed.
+    const xUser = kind === "coingecko" && x ? await x.getUserByHandle(entry.handle).catch(() => null) : null;
+    const token = entry.token ?? (kind === "birdeye" ? entry.handle : idLabel.toUpperCase());
     const report = buildHistoricalReport(
-      { handle: entry.handle, token, createdAt: xUser?.createdAt ?? null },
+      { handle: entry.handle, token, createdAt: xUser?.createdAt ?? null, source, onchain },
       baseline,
     );
     const scores = computeScores(report, undefined);
 
     console.log(
-      `  ${entry.handle.padEnd(20)} ${coinId.padEnd(18)} ` +
+      `  ${entry.handle.padEnd(20)} ${kind.padEnd(9)} ${idLabel.slice(0, 16).padEnd(16)} ` +
         `base $${baseline.priceUsd ?? "?"} → ${horizon}d ` +
         `ret ${(ret * 100).toFixed(1)}%  earliness=${scores.earliness} price=${scores.price}`,
     );

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildHistoricalReport, MEASURED_SIGNALS } from "@/lib/scoring/historical";
+import {
+  buildHistoricalReport,
+  historySourceKind,
+  estimateMcap,
+  MEASURED_SIGNALS,
+} from "@/lib/scoring/historical";
 import { toCoinGeckoDate } from "@/lib/providers/price";
 import { analysisReportSchema } from "@/lib/schema/analysis";
 import { computeScores, priceContextScore } from "@/lib/schema/scoring";
@@ -41,5 +46,40 @@ describe("buildHistoricalReport", () => {
 
   it("only claims earliness + price as measured", () => {
     expect([...MEASURED_SIGNALS]).toEqual(["earliness", "price"]);
+  });
+});
+
+describe("historical price source selection", () => {
+  it("routes Solana mints to Birdeye and everything else to CoinGecko", () => {
+    expect(historySourceKind({ chain: "sol", tokenAddress: "mint123" })).toBe("birdeye");
+    expect(historySourceKind({ tokenAddress: "mint123" })).toBe("birdeye"); // address, no coingecko id
+    expect(historySourceKind({ coingeckoId: "bitcoin" })).toBe("coingecko");
+    expect(historySourceKind({ coingeckoId: "wif", tokenAddress: "mint123" })).toBe("coingecko");
+    expect(historySourceKind({})).toBe("coingecko");
+  });
+
+  it("estimates market cap from price × supply", () => {
+    expect(estimateMcap(0.01, 1_000_000_000)).toBe(10_000_000);
+    expect(estimateMcap(null, 1_000_000_000)).toBeNull();
+    expect(estimateMcap(0.01, undefined)).toBeNull();
+  });
+});
+
+describe("buildHistoricalReport (Solana on-chain entry)", () => {
+  it("uses token age for earliness and tags the on-chain section", () => {
+    const report = buildHistoricalReport(
+      {
+        handle: "solmeme",
+        token: "MEME",
+        createdAt: null,
+        source: "birdeye-history",
+        onchain: { chain: "sol", tokenAddress: "mint123", ageDays: 10 },
+      },
+      { priceUsd: 0.01, marketCapUsd: 2_000_000, volume24hUsd: null },
+    );
+    expect(report.onchain?.tokenAddress).toBe("mint123");
+    expect(report.price.source).toBe("birdeye-history");
+    // token age 10d → 90, holders null → 50, mcap 2M → 90 ⇒ 0.4·90+0.3·50+0.3·90 = 78
+    expect(computeScores(report).earliness).toBe(78);
   });
 });

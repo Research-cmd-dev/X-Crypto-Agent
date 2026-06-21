@@ -199,19 +199,23 @@ build a **price/fundamentals historical set** from a curated project list:
 
 ```bash
 cp data/historical-projects.example.json data/historical-projects.json
-# edit: [{ "handle", "coingeckoId"?, "token"?, "entryDate": "YYYY-MM-DD", "horizonDays"? }]
+# CoinGecko entry: { "handle", "coingeckoId"?, "token"?, "entryDate", "horizonDays"? }
+# Solana entry:    { "handle", "chain":"sol", "tokenAddress":"<mint>", "entryDate",
+#                    "totalSupply"?, "launchDate"? }   ← priced via Birdeye
 npm run backfill -- --dry-run      # fetch + print prices/returns, no DB writes
 npm run backfill                   # write matured dataset='historical' outcomes
 npm run backtest -- --historical   # per-signal predictive power + measured-only tuning
 ```
 
-This reconstructs only the **time-travelable** signals — price/market-cap (via
-CoinGecko history) and account age (immutable `created_at`). The X social graph
-is **not** reconstructable for a past date, so smart money / engagement /
-follower quality are left neutral and *not* tuned by the historical set (tuning
-is restricted to `MEASURED_SIGNALS`, so those weights are preserved). Free-tier
-CoinGecko limits history to ~365 days; keep entry dates within the last year, and
-include projects that *failed* (not just winners) to avoid survivorship bias.
+Price look-back is sourced **per entry**: **Birdeye** (`/defi/history_price_by_timestamp`,
+needs `BIRDEYE_API_KEY`) for Solana mints that CoinGecko doesn't index, **CoinGecko**
+otherwise (`src/lib/scoring/historical.ts` → `historySourceKind`). It reconstructs only
+the **time-travelable** signals — price/market-cap (Birdeye returns spot price; mcap is
+estimated from `totalSupply`) and token/account age. Smart money / engagement / holder
+quality at a past date are **not** reconstructable, so they're left neutral and *not*
+tuned (tuning is restricted to `MEASURED_SIGNALS`). Keep entry dates recent (CoinGecko
+free history ~365 days), and include projects that *failed*, not just winners, to avoid
+survivorship bias.
 
 ---
 
