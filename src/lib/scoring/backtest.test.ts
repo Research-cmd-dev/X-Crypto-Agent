@@ -3,6 +3,7 @@ import {
   spearman,
   fitness,
   searchWeights,
+  signalQualityReport,
   type BacktestSample,
 } from "@/lib/scoring/backtest";
 import { DEFAULT_PROFILE } from "@/lib/schema/scoring";
@@ -91,5 +92,40 @@ describe("searchWeights", () => {
     const b = searchWeights(samples, DEFAULT_PROFILE, { iterations: 1000, seed: 42 });
     expect(a.profile.weights).toEqual(b.profile.weights);
     expect(a.fitness).toBe(b.fitness);
+  });
+
+  it("with tunableKeys, leaves non-tunable weights pinned at base and keeps sum 1", () => {
+    const res = searchWeights(samples, DEFAULT_PROFILE, {
+      tunableKeys: ["website", "price"],
+      iterations: 2000,
+      seed: 3,
+    });
+    for (const k of [
+      "smartMoney",
+      "engagement",
+      "earliness",
+      "profile",
+      "technicalDepth",
+      "github",
+    ] as const) {
+      expect(res.profile.weights[k]).toBeCloseTo(DEFAULT_PROFILE.weights[k], 9);
+    }
+    const sum = Object.values(res.profile.weights).reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(1, 9);
+  });
+});
+
+describe("signalQualityReport", () => {
+  it("isolates which signal predicts return (website here), sorted high→low", () => {
+    const samples: BacktestSample[] = [10, 40, 70, 95].map((w) => ({
+      report: makeReport({ website: { score: w } }),
+      forwardReturn: w,
+    }));
+    const report = signalQualityReport(samples);
+    const website = report.find((r) => r.key === "website");
+    expect(website?.correlation).toBeCloseTo(1, 5);
+    expect(report[0].key).toBe("website"); // top-ranked
+    // signals constant across samples carry no rank information.
+    expect(report.find((r) => r.key === "smartMoney")?.correlation).toBe(0);
   });
 });

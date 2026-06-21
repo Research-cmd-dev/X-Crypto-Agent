@@ -10,6 +10,8 @@ import { analysisReportSchema, type AnalysisReport } from "@/lib/schema/analysis
 export interface BacktestSample {
   report: AnalysisReport;
   forwardReturn: number;
+  /** Signals validly measured for this sample (historical sets); undefined = all. */
+  measuredSignals?: string[];
 }
 
 const WEIGHT_KEYS = [
@@ -81,23 +83,68 @@ export function fitness(samples: BacktestSample[], profile: ScoringProfile): num
   return spearman(pairs);
 }
 
-/** Clamp negatives to 0 and renormalize the 8 weights to sum to 1. */
-function normalizeWeights(w: Record<WeightKey, number>): Record<WeightKey, number> {
-  let sum = 0;
-  const clamped = {} as Record<WeightKey, number>;
-  for (const k of WEIGHT_KEYS) {
-    clamped[k] = Math.max(0, w[k]);
-    sum += clamped[k];
+export interface SignalQuality {
+  key: WeightKey;
+  /** Spearman of this signal's sub-score vs. forward return. */
+  correlation: number;
+}
+
+/**
+ * Per-signal predictive power: for each sub-score, the rank correlation between
+ * it and the realized forward return. This is the most honest read on a
+ * price-only historical set — it shows which (reconstructable) signals actually
+ * predicted returns, without conflating them through the weighted overall.
+ */
+export function signalQualityReport(
+  samples: BacktestSample[],
+  profile: ScoringProfile = DEFAULT_PROFILE,
+): SignalQuality[] {
+  const breakdowns = samples.map((s) => ({
+    sub: computeScores(s.report, profile),
+    ret: s.forwardReturn,
+  }));
+  return WEIGHT_KEYS.map((key) => ({
+    key,
+    correlation: spearman(breakdowns.map((b) => ({ score: b.sub[key], ret: b.ret }))),
+  })).sort((a, b) => b.correlation - a.correlation);
+}
+
+/**
+ * Renormalize weights to sum to 1, but only redistribute budget among `tunable`
+ * keys — non-tunable keys stay pinned at their `base` value. With all keys
+ * tunable this is a plain clamp-and-normalize to 1.
+ */
+function normalizeMasked(
+  w: Record<WeightKey, number>,
+  base: Record<WeightKey, number>,
+  tunable: readonly WeightKey[],
+): Record<WeightKey, number> {
+  const tunableSet = new Set<WeightKey>(tunable);
+  let fixedSum = 0;
+  for (const k of WEIGHT_KEYS) if (!tunableSet.has(k)) fixedSum += Math.max(0, base[k]);
+  const budget = Math.max(0, 1 - fixedSum);
+
+  let tSum = 0;
+  const tClamped = {} as Record<WeightKey, number>;
+  for (const k of tunable) {
+    tClamped[k] = Math.max(0, w[k]);
+    tSum += tClamped[k];
   }
-  if (sum === 0) return { ...DEFAULT_PROFILE.weights };
-  for (const k of WEIGHT_KEYS) clamped[k] = clamped[k] / sum;
-  return clamped;
+
+  const out = {} as Record<WeightKey, number>;
+  for (const k of WEIGHT_KEYS) out[k] = tunableSet.has(k) ? 0 : Math.max(0, base[k]);
+  for (const k of tunable) {
+    out[k] = tSum > 0 ? (budget * tClamped[k]) / tSum : budget / tunable.length;
+  }
+  return out;
 }
 
 export interface SearchOptions {
   iterations?: number;
   step?: number;
   seed?: number;
+  /** Restrict tuning to these signals (others stay at `base`). Default: all. */
+  tunableKeys?: readonly WeightKey[];
 }
 
 export interface SearchResult {
@@ -120,22 +167,24 @@ export function searchWeights(
 ): SearchResult {
   const iterations = opts.iterations ?? 3000;
   const step = opts.step ?? 0.05;
+  const tunable = opts.tunableKeys ?? WEIGHT_KEYS;
   let seed = (opts.seed ?? 12345) % 0x7fffffff;
   const rand = () => {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
     return seed / 0x7fffffff;
   };
 
-  // A fully random point on the weight simplex (escapes plateaus / local optima).
+  // A fully random point on the (masked) weight simplex — escapes plateaus.
   const randomWeights = (): Record<WeightKey, number> => {
-    const w = {} as Record<WeightKey, number>;
-    for (const k of WEIGHT_KEYS) w[k] = rand();
-    return normalizeWeights(w);
+    const w = { ...base.weights };
+    for (const k of tunable) w[k] = rand();
+    return normalizeMasked(w, base.weights, tunable);
   };
 
+  // Start from base, re-projected onto the masked simplex (no-op when all tunable).
   const baselineFitness = fitness(samples, base);
-  let bestWeights = { ...base.weights };
-  let bestFitness = baselineFitness;
+  let bestWeights = normalizeMasked(base.weights, base.weights, tunable);
+  let bestFitness = fitness(samples, { ...base, weights: bestWeights });
 
   for (let it = 0; it < iterations; it++) {
     // Mostly hill-climb from the best so far; periodically restart from a random
@@ -145,9 +194,9 @@ export function searchWeights(
       weights = randomWeights();
     } else {
       const candidate = { ...bestWeights };
-      const k = WEIGHT_KEYS[Math.floor(rand() * WEIGHT_KEYS.length)];
+      const k = tunable[Math.floor(rand() * tunable.length)];
       candidate[k] = candidate[k] + (rand() - 0.5) * 2 * step;
-      weights = normalizeWeights(candidate);
+      weights = normalizeMasked(candidate, base.weights, tunable);
     }
     const f = fitness(samples, { ...base, weights });
     if (f > bestFitness) {
@@ -164,16 +213,23 @@ export function searchWeights(
   };
 }
 
+export interface LoadSamplesOptions {
+  /** Which dataset to load. Defaults to 'live' so the full-model refinement is unaffected. */
+  dataset?: "live" | "historical";
+}
+
 /**
  * Load matured, labeled samples: every matured outcome joined to its frozen
  * report payload. Done in two queries (robust to PostgREST embedding quirks).
  */
-export async function loadSamples(): Promise<BacktestSample[]> {
+export async function loadSamples(opts: LoadSamplesOptions = {}): Promise<BacktestSample[]> {
+  const dataset = opts.dataset ?? "live";
   const sb = supabaseServer();
   const { data: outcomes, error } = await sb
     .from("outcomes")
-    .select("report_id, forward_return")
+    .select("report_id, forward_return, measured_signals")
     .eq("matured", true)
+    .eq("dataset", dataset)
     .not("forward_return", "is", null);
   if (error) throw new Error(`Failed to load outcomes: ${error.message}`);
 
@@ -198,7 +254,12 @@ export async function loadSamples(): Promise<BacktestSample[]> {
     if (!parsed.success) continue;
     const ret = (row as { forward_return: number | null }).forward_return;
     if (ret == null) continue;
-    samples.push({ report: parsed.data, forwardReturn: Number(ret) });
+    samples.push({
+      report: parsed.data,
+      forwardReturn: Number(ret),
+      measuredSignals:
+        (row as { measured_signals: string[] | null }).measured_signals ?? undefined,
+    });
   }
   return samples;
 }

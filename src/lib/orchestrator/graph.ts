@@ -9,7 +9,7 @@ import { runScorer, mergeRedFlags } from "@/lib/agents/scorer";
 import { DEFAULT_PROFILE, type ScoringProfile } from "@/lib/schema/scoring";
 
 /** Neutral baseline report so a degraded run still yields a valid object. */
-function emptyReport(handle: string): AnalysisReport {
+export function emptyReport(handle: string): AnalysisReport {
   return {
     account: {
       handle,

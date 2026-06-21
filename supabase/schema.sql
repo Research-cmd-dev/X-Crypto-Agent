@@ -217,13 +217,20 @@ create table if not exists outcomes (
   forward_return      numeric,                      -- (last / baseline) - 1
   horizon_days        integer,
   matured             boolean not null default false,
+  dataset             text not null default 'live',  -- 'live' | 'historical'
+  measured_signals    text[],                        -- signals validly measured (historical sets)
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now(),
   unique (report_id)
 );
 
+-- Additive migration for existing databases (no-op on fresh installs).
+alter table outcomes add column if not exists dataset text not null default 'live';
+alter table outcomes add column if not exists measured_signals text[];
+
 create index if not exists idx_outcomes_candidate on outcomes(candidate_id);
 create index if not exists idx_outcomes_matured on outcomes(matured);
+create index if not exists idx_outcomes_dataset on outcomes(dataset);
 
 drop trigger if exists trg_outcomes_updated_at on outcomes;
 create trigger trg_outcomes_updated_at

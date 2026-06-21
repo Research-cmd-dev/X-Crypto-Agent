@@ -1,14 +1,22 @@
 /**
  * Backtest the scoring weights against realized forward returns.
  *
- *   npm run backtest            # read-only: report active vs. best-found weights
- *   npm run backtest -- --write # also insert the best as an INACTIVE candidate
- *                               # weight_versions row for review
+ *   npm run backtest                 # full model, live forward-return samples
+ *   npm run backtest -- --historical # price/fundamentals historical samples
+ *   npm run backtest -- --write      # also save the best as an INACTIVE candidate
+ *                                    # weight_versions row for review
  *
- * Requires Supabase env (reads matured `outcomes` + frozen reports). Reports
- * "insufficient matured samples" until tracked tokens reach the 30-day horizon.
+ * Requires Supabase env. Reports "insufficient matured samples" until enough
+ * outcomes exist (live: tokens reaching the 30-day horizon; historical: rows
+ * created by `npm run backfill`).
  */
-import { loadSamples, fitness, searchWeights } from "@/lib/scoring/backtest";
+import {
+  loadSamples,
+  fitness,
+  searchWeights,
+  signalQualityReport,
+} from "@/lib/scoring/backtest";
+import { MEASURED_SIGNALS } from "@/lib/scoring/historical";
 import { loadActiveProfile } from "@/lib/scoring/profile";
 import { supabaseServer } from "@/lib/supabase/server";
 
@@ -16,26 +24,44 @@ const MIN_SAMPLES = 10;
 
 async function main() {
   const write = process.argv.includes("--write");
+  const historical = process.argv.includes("--historical");
+  const dataset = historical ? "historical" : "live";
 
-  const samples = await loadSamples();
+  const samples = await loadSamples({ dataset });
   if (samples.length < MIN_SAMPLES) {
     console.log(
-      `Insufficient matured samples (${samples.length}/${MIN_SAMPLES}). ` +
-        `Outcomes accumulate as tracked tokens reach the 30-day horizon — ` +
-        `re-run once more history has matured.`,
+      `Insufficient matured ${dataset} samples (${samples.length}/${MIN_SAMPLES}). ` +
+        (historical
+          ? `Build a historical set with: npm run backfill`
+          : `Outcomes accumulate as tracked tokens reach the 30-day horizon — re-run later.`),
     );
     return;
   }
 
   const active = await loadActiveProfile();
-  const activeFitness = fitness(samples, active.profile);
+  console.log(`Dataset: ${dataset}  ·  samples (matured): ${samples.length}`);
+  console.log(`Active profile fitness (Spearman): ${fitness(samples, active.profile).toFixed(4)}`);
 
-  console.log(`Samples (matured): ${samples.length}`);
-  console.log(`Active profile fitness (Spearman): ${activeFitness.toFixed(4)}\n`);
+  if (historical) {
+    console.log("\nPer-signal predictive power (Spearman of sub-score vs. forward return):");
+    for (const s of signalQualityReport(samples, active.profile)) {
+      const measured = (MEASURED_SIGNALS as readonly string[]).includes(s.key);
+      console.log(
+        `  ${s.key.padEnd(16)} ${s.correlation >= 0 ? " " : ""}${s.correlation.toFixed(4)}` +
+          (measured ? "" : "   (not measured in this set — ignore)"),
+      );
+    }
+    console.log(
+      `\nNote: only ${MEASURED_SIGNALS.join(", ")} are measured historically; ` +
+        `tuning is restricted to them so smart money/engagement weights are preserved.`,
+    );
+  }
 
-  const result = searchWeights(samples, active.profile);
+  const result = searchWeights(samples, active.profile, {
+    tunableKeys: historical ? MEASURED_SIGNALS : undefined,
+  });
   console.log(
-    `Best found: ${result.fitness.toFixed(4)} ` +
+    `\nBest found: ${result.fitness.toFixed(4)} ` +
       `(baseline ${result.baselineFitness.toFixed(4)}, +${(
         result.fitness - result.baselineFitness
       ).toFixed(4)})`,
@@ -48,14 +74,16 @@ async function main() {
   if (write && result.fitness > result.baselineFitness) {
     const sb = supabaseServer();
     const { error } = await sb.from("weight_versions").insert({
-      label: `backtest ${new Date().toISOString().slice(0, 10)}`,
+      label: `backtest ${dataset} ${new Date().toISOString().slice(0, 10)}`,
       profile: result.profile,
       active: false,
       source: "backtest",
       metrics: {
+        dataset,
         fitness: result.fitness,
         baselineFitness: result.baselineFitness,
         samples: samples.length,
+        tunable: historical ? MEASURED_SIGNALS : "all",
       },
     });
     if (error) throw new Error(error.message);

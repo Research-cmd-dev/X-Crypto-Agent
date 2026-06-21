@@ -1,0 +1,14 @@
+[
+  {
+    "handle": "exampleproject",
+    "coingeckoId": "example-token",
+    "token": "EXMPL",
+    "entryDate": "2024-09-01",
+    "horizonDays": 30
+  },
+  {
+    "handle": "anotherproject",
+    "token": "ANOTHER",
+    "entryDate": "2024-10-15"
+  }
+]

@@ -184,6 +184,37 @@ verdict = overall ≥ 70 → High | ≥ 40 → Monitor | else Avoid
 
 ---
 
+## Backtesting & weight tuning
+
+Weights live in the DB (`weight_versions`, one active row) so they can be tuned
+without a redeploy. Every scored token seeds an `outcomes` row (entry price
+frozen at scoring time); the scheduled `outcomes` job fills in the forward return
+and freezes it after 30 days. `npm run backtest` then measures how well the score
+ranked realized returns (Spearman) and proposes better weights
+(`src/lib/scoring/backtest.ts`); `--write` saves an inactive `weight_versions`
+candidate for review.
+
+**Live, full-fidelity labels take ~30 days to mature.** To get history *now*,
+build a **price/fundamentals historical set** from a curated project list:
+
+```bash
+cp data/historical-projects.example.json data/historical-projects.json
+# edit: [{ "handle", "coingeckoId"?, "token"?, "entryDate": "YYYY-MM-DD", "horizonDays"? }]
+npm run backfill -- --dry-run      # fetch + print prices/returns, no DB writes
+npm run backfill                   # write matured dataset='historical' outcomes
+npm run backtest -- --historical   # per-signal predictive power + measured-only tuning
+```
+
+This reconstructs only the **time-travelable** signals — price/market-cap (via
+CoinGecko history) and account age (immutable `created_at`). The X social graph
+is **not** reconstructable for a past date, so smart money / engagement /
+follower quality are left neutral and *not* tuned by the historical set (tuning
+is restricted to `MEASURED_SIGNALS`, so those weights are preserved). Free-tier
+CoinGecko limits history to ~365 days; keep entry dates within the last year, and
+include projects that *failed* (not just winners) to avoid survivorship bias.
+
+---
+
 ## Caching & rate limiting
 
 `src/lib/cache/store.ts` + `src/lib/util/fetch.ts`:
@@ -222,8 +253,11 @@ npm run scout
   `scripts/seed-signal-sources.ts` (or insert into `signal_sources`). Curated
   smart-money accounts are the primary alpha funnel — their @mentions surface
   gems early.
-- **Tune scoring** — edit `ALPHA_WEIGHTS` / `VERDICT_THRESHOLDS` /
-  `earlinessScore` in `src/lib/schema/scoring.ts`.
+- **Tune scoring** — edit the active profile via `weight_versions` (or
+  `ALPHA_WEIGHTS` / `VERDICT_THRESHOLDS` / `earlinessScore` in
+  `src/lib/schema/scoring.ts` for the built-in default).
+- **Build a historical backtest set** — curate `data/historical-projects.json`
+  and run `npm run backfill` (see *Backtesting & weight tuning*).
 - **Add an agent** — implement the `Agent` interface (`src/lib/agents/types.ts`)
   and add it to the graph in `src/lib/orchestrator/graph.ts`. Nodes are
   failure-tolerant by construction.

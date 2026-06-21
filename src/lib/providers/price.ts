@@ -19,6 +19,21 @@ const EMPTY: PriceData = {
   notes: "No token / price data found.",
 };
 
+/** A point-in-time market snapshot (used for historical backfill / backtesting). */
+export interface PriceSnapshot {
+  priceUsd: number | null;
+  marketCapUsd: number | null;
+  volume24hUsd: number | null;
+}
+
+/** Format a date as CoinGecko's `dd-mm-yyyy` (UTC), as required by /coins/{id}/history. */
+export function toCoinGeckoDate(date: Date): string {
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = date.getUTCFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 /**
  * Resolves token market data. Tries CoinGecko search→market first (by name or
  * symbol), then falls back to DexScreener (by symbol). Returns a neutral empty
@@ -48,6 +63,59 @@ export class PriceProvider {
       if (dx) return dx;
       return { ...EMPTY };
     });
+  }
+
+  /**
+   * Resolve a CoinGecko coin id from a free-text query (symbol or name) via the
+   * /search endpoint. Cached for a day. Lets a curated backfill entry give a
+   * symbol/name instead of an exact id.
+   */
+  async coinIdFor(query: string): Promise<string | null> {
+    return cached("price:coinid", query.toLowerCase(), 86_400, async () => {
+      const res = await fetchWithRetry(
+        `${this.cgBase()}/search?query=${encodeURIComponent(query)}`,
+        { headers: this.cgHeaders() },
+      ).catch(() => null);
+      if (!res || !res.ok) return null;
+      const data = (await res.json()) as { coins?: { id: string }[] };
+      return data.coins?.[0]?.id ?? null;
+    });
+  }
+
+  /**
+   * Historical market snapshot for a coin on a given UTC date, via CoinGecko's
+   * /coins/{id}/history. Cached long (history is immutable). Returns null when the
+   * date predates the token (no `market_data`). NOTE: free-tier CoinGecko limits
+   * history to ~365 days and is rate-limited — callers should throttle.
+   */
+  async historyOn(coinId: string, date: Date): Promise<PriceSnapshot | null> {
+    const day = toCoinGeckoDate(date);
+    return cached(
+      "price:history",
+      `${coinId}:${day}`,
+      2_592_000, // 30 days
+      async () => {
+        const res = await fetchWithRetry(
+          `${this.cgBase()}/coins/${encodeURIComponent(coinId)}/history?date=${day}&localization=false`,
+          { headers: this.cgHeaders() },
+        ).catch(() => null);
+        if (!res || !res.ok) return null;
+        const data = (await res.json()) as {
+          market_data?: {
+            current_price?: { usd?: number };
+            market_cap?: { usd?: number };
+            total_volume?: { usd?: number };
+          };
+        };
+        const md = data.market_data;
+        if (!md) return null;
+        return {
+          priceUsd: md.current_price?.usd ?? null,
+          marketCapUsd: md.market_cap?.usd ?? null,
+          volume24hUsd: md.total_volume?.usd ?? null,
+        };
+      },
+    );
   }
 
   private async tryCoinGecko(query: string): Promise<PriceData | null> {

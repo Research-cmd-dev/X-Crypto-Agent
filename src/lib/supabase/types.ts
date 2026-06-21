@@ -120,6 +120,8 @@ export interface OutcomeRow {
   forward_return: number | null;
   horizon_days: number | null;
   matured: boolean;
+  dataset: "live" | "historical";
+  measured_signals: string[] | null;
   created_at: string;
   updated_at: string;
 }
