@@ -207,15 +207,20 @@ npm run backfill                   # write matured dataset='historical' outcomes
 npm run backtest -- --historical   # per-signal predictive power + measured-only tuning
 ```
 
-Price look-back is sourced **per entry**: **Birdeye** (`/defi/history_price_by_timestamp`,
-needs `BIRDEYE_API_KEY`) for Solana mints that CoinGecko doesn't index, **CoinGecko**
-otherwise (`src/lib/scoring/historical.ts` → `historySourceKind`). It reconstructs only
-the **time-travelable** signals — price/market-cap (Birdeye returns spot price; mcap is
-estimated from `totalSupply`) and token/account age. Smart money / engagement / holder
-quality at a past date are **not** reconstructable, so they're left neutral and *not*
-tuned (tuning is restricted to `MEASURED_SIGNALS`). Keep entry dates recent (CoinGecko
-free history ~365 days), and include projects that *failed*, not just winners, to avoid
-survivorship bias.
+Price look-back is sourced **per entry** (`src/lib/scoring/historical.ts` →
+`historySourceKind`): **CoinGecko** for listed tokens, and for Solana mints a fallback
+chain (`FallbackPriceHistory`) of **Birdeye OHLCV → Bitquery**. Birdeye's `/defi/ohlcv`
+gives price **and** volume; Bitquery (`DEXTradeByTokens`, GraphQL) covers obscure /
+unlisted memecoins Birdeye misses, back to ~May 2024, and is the only source with
+Pump.fun pre-migration bonding-curve prices. Needs `BIRDEYE_API_KEY` + `BITQUERY_API_KEY`.
+(DexScreener is **live-snapshot only** — no historical endpoint — so it isn't used here;
+a Helius swap-reconstruction last-resort is possible but heavy and not implemented.)
+
+It reconstructs only the **time-travelable** signals — price + volume (mcap estimated
+from `totalSupply`) and token/account age. Smart money / engagement / holder quality at
+a past date are **not** reconstructable, so they're left neutral and *not* tuned (tuning
+is restricted to `MEASURED_SIGNALS`). Include projects that *failed*, not just winners,
+to avoid survivorship bias.
 
 ---
 

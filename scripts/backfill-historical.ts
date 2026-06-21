@@ -23,6 +23,8 @@
 import { readFileSync } from "node:fs";
 import { PriceProvider, type PriceSnapshot } from "@/lib/providers/price";
 import { BirdeyePriceHistory } from "@/lib/providers/birdeye";
+import { BitqueryPriceHistory } from "@/lib/providers/bitquery";
+import { FallbackPriceHistory } from "@/lib/providers/fallback-history";
 import { getXProvider, type XProvider } from "@/lib/providers/x";
 import { mapLimit } from "@/lib/util/fetch";
 import { computeScores } from "@/lib/schema/scoring";
@@ -65,7 +67,9 @@ async function main() {
   console.log(`Loaded ${entries.length} project(s) from ${path}${dryRun ? " (dry run)" : ""}.`);
 
   const price = new PriceProvider();
-  const birdeye = new BirdeyePriceHistory();
+  // Solana look-back: try Birdeye OHLCV first, then Bitquery for obscure/missing
+  // tokens (and historical volume). CoinGecko handles everything else.
+  const solHistory = new FallbackPriceHistory([new BirdeyePriceHistory(), new BitqueryPriceHistory()]);
   // X only supplies the immutable created_at (age signal); make it best-effort so
   // a dry run works with just CoinGecko (no X_API_BEARER_TOKEN / Supabase env).
   let x: XProvider | null = null;
@@ -111,9 +115,9 @@ async function main() {
         return;
       }
       idLabel = mint;
-      source = "birdeye-history";
-      const b = await birdeye.historyOn(mint, entryDate);
-      const o = await birdeye.historyOn(mint, outcomeDate);
+      source = "birdeye/bitquery-history";
+      const b = await solHistory.historyOn(mint, entryDate);
+      const o = await solHistory.historyOn(mint, outcomeDate);
       // Birdeye returns spot price; estimate mcap from supply when provided.
       baseline = b ? { ...b, marketCapUsd: b.marketCapUsd ?? estimateMcap(b.priceUsd, entry.totalSupply) } : null;
       outcome = o ? { ...o, marketCapUsd: o.marketCapUsd ?? estimateMcap(o.priceUsd, entry.totalSupply) } : null;

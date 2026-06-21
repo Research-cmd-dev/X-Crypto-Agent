@@ -17,6 +17,7 @@ const serverSchema = z.object({
   // On-chain providers for the Solana memecoin funnel (optional → mock fallback).
   GMGN_API_KEY: z.string().optional(),
   BIRDEYE_API_KEY: z.string().optional(),
+  BITQUERY_API_KEY: z.string().optional(),
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),

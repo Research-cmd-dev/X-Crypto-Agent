@@ -16,10 +16,14 @@ export function toUnixSeconds(date: Date): number {
  * results are cached long. Requires BIRDEYE_API_KEY; free tier is rate-limited,
  * so callers should throttle.
  *
- * NOTE: the by-timestamp endpoint returns spot price only; market cap / volume
- * at that instant are not provided, so the snapshot carries price and leaves
- * mcap/volume null. Forward returns are computed from price (see `forwardReturn`).
+ * `historyOn` prefers the OHLCV endpoint (a daily candle covering the date), which
+ * yields close price AND volume; it falls back to the by-timestamp endpoint (spot
+ * price only) when OHLCV has no candle. Market cap is never returned (estimate it
+ * from supply downstream). For deeper / obscure-token coverage, wrap this in
+ * {@link FallbackPriceHistory} with a Bitquery source behind it.
  */
+const DAY_SECONDS = 86_400;
+
 export class BirdeyePriceHistory implements PriceHistoryProvider {
   private readonly key?: string;
 
@@ -42,16 +46,36 @@ export class BirdeyePriceHistory implements PriceHistoryProvider {
   async historyOn(mint: string, date: Date): Promise<PriceSnapshot | null> {
     const unixtime = toUnixSeconds(date);
     return cached("price:birdeye-history", `${mint}:${unixtime}`, 2_592_000, async () => {
-      const url = `${BASE}/defi/history_price_by_timestamp?address=${encodeURIComponent(mint)}&timestamp=${unixtime}`;
-      const res = await fetchWithRetry(url, { headers: this.headers() }).catch(() => null);
-      if (!res || !res.ok) return null;
-      const body = (await res.json()) as {
-        success?: boolean;
-        data?: { value?: number; price?: number } | null;
-      };
-      const value = body.data?.value ?? body.data?.price ?? null;
-      if (value == null) return null;
-      return { priceUsd: value, marketCapUsd: null, volume24hUsd: null };
+      return (await this.ohlcvOn(mint, unixtime)) ?? (await this.priceOn(mint, unixtime));
     });
+  }
+
+  /** Daily OHLCV candle covering the date → close price + volume. */
+  private async ohlcvOn(mint: string, unixtime: number): Promise<PriceSnapshot | null> {
+    const url =
+      `${BASE}/defi/ohlcv?address=${encodeURIComponent(mint)}&type=1D` +
+      `&time_from=${unixtime}&time_to=${unixtime + DAY_SECONDS}`;
+    const res = await fetchWithRetry(url, { headers: this.headers() }).catch(() => null);
+    if (!res || !res.ok) return null;
+    const body = (await res.json()) as {
+      data?: { items?: Array<{ c?: number; v?: number }> } | null;
+    };
+    const candle = body.data?.items?.[0];
+    if (!candle || candle.c == null) return null;
+    return { priceUsd: candle.c, marketCapUsd: null, volume24hUsd: candle.v ?? null };
+  }
+
+  /** Spot price at the timestamp (no volume) — fallback when OHLCV is empty. */
+  private async priceOn(mint: string, unixtime: number): Promise<PriceSnapshot | null> {
+    const url = `${BASE}/defi/history_price_by_timestamp?address=${encodeURIComponent(mint)}&timestamp=${unixtime}`;
+    const res = await fetchWithRetry(url, { headers: this.headers() }).catch(() => null);
+    if (!res || !res.ok) return null;
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: { value?: number; price?: number } | null;
+    };
+    const value = body.data?.value ?? body.data?.price ?? null;
+    if (value == null) return null;
+    return { priceUsd: value, marketCapUsd: null, volume24hUsd: null };
   }
 }
