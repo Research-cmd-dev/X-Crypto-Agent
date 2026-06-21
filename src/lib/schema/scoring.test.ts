@@ -1,0 +1,103 @@
+import { describe, it, expect } from "vitest";
+import {
+  computeScores,
+  clampScore,
+  priceContextScore,
+  toVerdict,
+  redFlagPenalty,
+} from "@/lib/schema/scoring";
+import { analysisReportSchema } from "@/lib/schema/analysis";
+import { makeReport } from "@/lib/schema/fixtures";
+
+describe("clampScore", () => {
+  it("clamps and rounds into [0,100]", () => {
+    expect(clampScore(-5)).toBe(0);
+    expect(clampScore(150)).toBe(100);
+    expect(clampScore(72.6)).toBe(73);
+    expect(clampScore(null)).toBe(0);
+    expect(clampScore(NaN)).toBe(0);
+  });
+});
+
+describe("priceContextScore", () => {
+  it("is neutral (50) for pre-token projects", () => {
+    expect(priceContextScore(makeReport().price)).toBe(50);
+  });
+  it("rewards healthy liquidity", () => {
+    const price = { token: "EXMPL", marketCapUsd: 1_000_000, volume24hUsd: 200_000, priceUsd: 0.01, source: "coingecko", notes: "" };
+    expect(priceContextScore(price)).toBe(80);
+  });
+  it("penalizes very thin liquidity", () => {
+    const price = { token: "EXMPL", marketCapUsd: 10_000_000, volume24hUsd: 1_000, priceUsd: 0.1, source: "coingecko", notes: "" };
+    expect(priceContextScore(price)).toBe(25);
+  });
+});
+
+describe("toVerdict", () => {
+  it("maps thresholds", () => {
+    expect(toVerdict(85)).toBe("High");
+    expect(toVerdict(70)).toBe("High");
+    expect(toVerdict(55)).toBe("Monitor");
+    expect(toVerdict(40)).toBe("Monitor");
+    expect(toVerdict(39)).toBe("Avoid");
+  });
+});
+
+describe("redFlagPenalty", () => {
+  it("sums severities", () => {
+    expect(
+      redFlagPenalty([
+        { severity: "high", code: "a", message: "" },
+        { severity: "med", code: "b", message: "" },
+        { severity: "low", code: "c", message: "" },
+      ]),
+    ).toBe(25);
+  });
+});
+
+describe("computeScores", () => {
+  it("produces a high verdict for a strong project", () => {
+    const report = makeReport({
+      profile: { followerQuality: { score: 90, notes: "" } },
+      website: { score: 90 },
+      github: { score: 85 },
+      engagement: { momentumScore: 80 },
+      technicalDepth: { score: 80 },
+    });
+    const s = computeScores(report);
+    expect(s.overall).toBeGreaterThanOrEqual(70);
+    expect(s.verdict).toBe("High");
+  });
+
+  it("drops to Avoid when high-severity red flags pile up", () => {
+    const report = makeReport({
+      profile: { followerQuality: { score: 60, notes: "" } },
+      website: { score: 55 },
+      github: { score: 50 },
+      engagement: { momentumScore: 50 },
+      technicalDepth: { score: 45 },
+      redFlags: [
+        { severity: "high", code: "fake_followers", message: "" },
+        { severity: "high", code: "no_github", message: "" },
+      ],
+    });
+    const s = computeScores(report);
+    expect(s.overall).toBeLessThan(40);
+    expect(s.verdict).toBe("Avoid");
+  });
+
+  it("only ever emits valid sub-scores in [0,100]", () => {
+    const s = computeScores(makeReport());
+    for (const k of ["profile", "website", "github", "engagement", "technicalDepth", "price", "overall"] as const) {
+      expect(s[k]).toBeGreaterThanOrEqual(0);
+      expect(s[k]).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+describe("analysisReportSchema", () => {
+  it("validates the fixture round-trip", () => {
+    const report = makeReport();
+    expect(() => analysisReportSchema.parse(report)).not.toThrow();
+  });
+});
