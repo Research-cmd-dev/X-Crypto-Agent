@@ -153,6 +153,7 @@ export const xAnalyzerOutputSchema = z.object({
   websiteUrl: z.string().nullable().describe("Best website URL found on the profile/site, or null"),
   githubUrl: z.string().nullable().describe("Best GitHub URL/org found, or null"),
   redFlags: z.array(redFlagSchema),
+  summary: z.string().describe("2-4 sentence executive summary of the project's promise and risks"),
 });
 export type XAnalyzerOutput = z.infer<typeof xAnalyzerOutputSchema>;
 
