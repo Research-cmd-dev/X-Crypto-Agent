@@ -24,7 +24,12 @@ export interface AgentContext {
   candidate: CandidateRef;
   providers: Providers;
   xUser: XUser | null;
-  hints: { websiteUrl: string | null; githubUrl: string | null };
+  hints: {
+    websiteUrl: string | null;
+    githubUrl: string | null;
+    /** On-chain token contract address pulled from the bio/posts (Solana mint). */
+    contractAddress: string | null;
+  };
   log: (msg: string, meta?: Record<string, unknown>) => void;
 }
 

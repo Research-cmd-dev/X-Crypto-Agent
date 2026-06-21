@@ -56,7 +56,7 @@ src/
   components/     shadcn UI + table / detail / score / verdict components
   lib/
     schema/       AnalysisReport Zod schema + scoring model
-    providers/    x (API v2 + mock), github (Octokit), price (CoinGecko/DexScreener)
+    providers/    x (API v2 + mock), github (Octokit), price (Birdeye/DexScreener, by contract address)
     anthropic/    client, structured-output parse, web-tool research loop
     agents/       x-analyzer, website, github, price, scorer
     orchestrator/ graph (nodes), persist, analyzeCandidate entrypoint
@@ -75,7 +75,8 @@ scripts/          seed signal sources, mock dev runner
 - An **Anthropic API key** (required)
 - An **X API v2 Bearer token** (required — a paid X API plan)
 - A **Trigger.dev** account/project (to run the jobs)
-- Optional: **GitHub token** (higher rate limits), **CoinGecko Pro key**
+- Optional: **GitHub token** (higher rate limits), **Birdeye API key** (early/
+  pump.fun token market data by contract address; CoinGecko is not used)
 
 ---
 

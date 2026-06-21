@@ -26,7 +26,7 @@ async function main() {
     candidate: { id: "dev-run", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi" },
     providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider() },
     xUser: null,
-    hints: { websiteUrl: null, githubUrl: null },
+    hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
     log: (m, meta) => console.log(`[scout] ${m}`, meta ?? ""),
   };
 

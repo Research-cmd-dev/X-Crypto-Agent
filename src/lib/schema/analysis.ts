@@ -152,6 +152,10 @@ export const xAnalyzerOutputSchema = z.object({
   technicalDepth: technicalDepthSchema,
   websiteUrl: z.string().nullable().describe("Best website URL found on the profile/site, or null"),
   githubUrl: z.string().nullable().describe("Best GitHub URL/org found, or null"),
+  contractAddress: z
+    .string()
+    .nullable()
+    .describe("Token contract address / mint from the bio or posts (e.g. a Solana pump.fun CA), or null"),
   redFlags: z.array(redFlagSchema),
   summary: z.string().describe("2-4 sentence executive summary of the project's promise and risks"),
 });

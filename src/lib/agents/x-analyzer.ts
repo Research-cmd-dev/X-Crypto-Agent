@@ -4,17 +4,56 @@ import { xAnalyzerOutputSchema } from "@/lib/schema/analysis";
 import { researchText } from "@/lib/anthropic/research";
 import { parseStructured } from "@/lib/anthropic/structured";
 import { X_ANALYZER_SYSTEM } from "@/lib/prompts/x-analyzer.system";
+import {
+  extractUrls,
+  firstWebsiteUrl,
+  firstGithubUrl,
+  githubOwnerFromUrl,
+  extractMentions,
+  extractContractAddress,
+} from "@/lib/extract";
 
 function avg(nums: number[]): number | null {
   if (nums.length === 0) return null;
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
-function firstGithubUrl(urls: string[]): string | null {
-  return urls.find((u) => /github\.com/i.test(u)) ?? null;
+interface Detected {
+  websiteUrl: string | null;
+  githubUrl: string | null;
+  githubOwner: string | null;
+  contractAddress: string | null;
+  mentions: string[];
 }
-function firstWebsiteUrl(urls: string[]): string | null {
-  return urls.find((u) => !/github\.com|twitter\.com|x\.com|t\.co/i.test(u)) ?? null;
+
+/** Deterministically pull hard signals from the bio + posts (not just the profile link). */
+function detectSignals(user: XUser, tweets: XTweet[]): Detected {
+  const bio = user.description ?? "";
+  const postText = tweets.map((t) => t.text).join("\n");
+  const textBlob = `${bio}\n${postText}`;
+  // Structured (already-expanded) URLs from the profile + every post, then any
+  // raw/bare URLs mentioned in the bio/post text.
+  const urls = [
+    ...user.urls,
+    ...tweets.flatMap((t) => t.urls),
+    ...extractUrls(textBlob),
+  ];
+  const githubUrl = firstGithubUrl(urls);
+  return {
+    websiteUrl: firstWebsiteUrl(urls),
+    githubUrl,
+    githubOwner: githubOwnerFromUrl(githubUrl),
+    contractAddress: extractContractAddress(textBlob),
+    mentions: extractMentions(postText),
+  };
+}
+
+function signalsBlock(d: Detected): string {
+  return `SIGNALS EXTRACTED FROM BIO + POSTS (deterministic):
+website: ${d.websiteUrl ?? "(none found)"}
+github: ${d.githubUrl ?? "(none found)"}${d.githubOwner ? ` (owner/dev candidate: ${d.githubOwner})` : ""}
+token contract address: ${d.contractAddress ?? "(none found)"}
+accounts mentioned in posts (dev/collaborator candidates): ${d.mentions.map((m) => `@${m}`).join(", ") || "(none)"}`;
 }
 
 function evidence(user: XUser, tweets: XTweet[], followers: XUser[]): string {
@@ -88,14 +127,33 @@ export const xAnalyzerAgent: Agent = {
       providers.x.getFollowersSample(user.id, { maxResults: 50 }).catch(() => []),
     ]);
 
+    // 2b. Deterministically pull website / github / contract / dev candidates
+    // from the bio + posts, and set hints NOW so downstream agents (website,
+    // github, price) still work even if the LLM steps below fail.
+    const detected = detectSignals(user, tweets);
+    ctx.hints.websiteUrl = detected.websiteUrl;
+    ctx.hints.githubUrl = detected.githubUrl;
+    ctx.hints.contractAddress = detected.contractAddress;
+    log("x-analyzer signals", {
+      website: detected.websiteUrl,
+      github: detected.githubUrl,
+      contract: detected.contractAddress,
+      mentions: detected.mentions.length,
+    });
+
+    const ev = `${evidence(user, tweets, followers)}
+
+${signalsBlock(detected)}`;
+
     // 3. Research enrichment (notable followers, website, github, devs).
     const research = await researchText({
       system: X_ANALYZER_SYSTEM,
-      prompt: `Research this crypto X account. Identify its official website and GitHub,
-any notable/high-signal followers or backers, and any associated developer
-accounts. Be concise and cite what you find.
+      prompt: `Research this crypto X account. Confirm its official website and GitHub,
+identify any associated developer accounts (start from the extracted signals
+below — the GitHub owner and accounts mentioned in posts are strong candidates),
+and any notable/high-signal followers or backers. Be concise and cite findings.
 
-${evidence(user, tweets, followers)}`,
+${ev}`,
       maxUses: 4,
     }).catch((e) => {
       log("x-analyzer research failed", { error: String(e) });
@@ -107,25 +165,24 @@ ${evidence(user, tweets, followers)}`,
       agent: "x-analyzer",
       schema: xAnalyzerOutputSchema,
       system: X_ANALYZER_SYSTEM,
-      prompt: `${evidence(user, tweets, followers)}
+      prompt: `${ev}
 
 WEB RESEARCH EVIDENCE:
 ${research || "(no additional research)"}
 
-Produce the structured analysis now.`,
+Produce the structured analysis now. Use the extracted signals for websiteUrl,
+githubUrl, and contractAddress unless research clearly contradicts them.`,
       maxTokens: 4096,
     });
 
-    // 5. Override hard metrics with real X data; set hints for downstream agents.
+    // 5. Override hard metrics with real X data; prefer LLM hints, fall back to
+    // the deterministic signals from the bio/posts.
     const avgLikes = avg(tweets.map((t) => t.likeCount));
     const avgReposts = avg(tweets.map((t) => t.repostCount));
-    const profileUrls = [
-      ...user.urls,
-      ...tweets.flatMap((t) => t.urls),
-    ];
 
-    ctx.hints.websiteUrl = out.websiteUrl ?? firstWebsiteUrl(profileUrls);
-    ctx.hints.githubUrl = out.githubUrl ?? firstGithubUrl(profileUrls);
+    ctx.hints.websiteUrl = out.websiteUrl ?? detected.websiteUrl;
+    ctx.hints.githubUrl = out.githubUrl ?? detected.githubUrl;
+    ctx.hints.contractAddress = out.contractAddress ?? detected.contractAddress;
 
     return {
       account: {

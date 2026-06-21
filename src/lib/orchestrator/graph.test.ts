@@ -10,7 +10,7 @@ function ctx(): AgentContext {
     candidate: { id: "c1", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi" },
     providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider() },
     xUser: null,
-    hints: { websiteUrl: null, githubUrl: null },
+    hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
     log: () => {},
   };
 }

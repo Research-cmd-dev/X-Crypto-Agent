@@ -12,7 +12,7 @@ const serverSchema = z.object({
   X_API_BEARER_TOKEN: z.string().min(1, "X_API_BEARER_TOKEN is required"),
 
   GITHUB_TOKEN: z.string().optional(),
-  COINGECKO_API_KEY: z.string().optional(),
+  BIRDEYE_API_KEY: z.string().optional(),
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),

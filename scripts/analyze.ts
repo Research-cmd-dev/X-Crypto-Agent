@@ -8,7 +8,7 @@
  *   npm run analyze -- https://x.com/c0mputeAI
  *
  * Requires ANTHROPIC_API_KEY (agents call Claude) and X_API_BEARER_TOKEN (real
- * X API v2). Optional: GITHUB_TOKEN, COINGECKO_API_KEY. Does NOT touch Supabase
+ * X API v2). Optional: GITHUB_TOKEN, BIRDEYE_API_KEY. Does NOT touch Supabase
  * — it runs the graph in-memory and prints the report; use the Trigger.dev
  * pipeline (`analyzeCandidate`) for a persisted run.
  */
@@ -57,7 +57,7 @@ async function main() {
       price: new PriceProvider(),
     },
     xUser: null,
-    hints: { websiteUrl: null, githubUrl: null },
+    hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
     log: (m, meta) => console.log(`[analyze] ${m}`, meta ?? ""),
   };
 

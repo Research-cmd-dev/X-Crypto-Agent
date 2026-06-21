@@ -16,72 +16,64 @@ const EMPTY: PriceData = {
   notes: "No token / price data found.",
 };
 
+const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
 /**
- * Resolves token market data. Tries CoinGecko search→market first (by name or
- * symbol), then falls back to DexScreener (by symbol). Returns a neutral empty
- * result if nothing matches — many early projects have no token yet.
+ * Resolves token market data by **on-chain contract address** — the right level
+ * for super-early discovery. CoinGecko is intentionally NOT used: by the time a
+ * token is listed there the early window is gone. Primary source is Birdeye
+ * (Solana, by mint); DexScreener-by-address is a free fallback. Returns a
+ * neutral empty result if there is no token / no market yet.
  */
 export class PriceProvider {
-  private readonly cgKey?: string;
+  private readonly birdeyeKey?: string;
 
-  constructor(cgKey = process.env.COINGECKO_API_KEY) {
-    this.cgKey = cgKey;
+  constructor(birdeyeKey = process.env.BIRDEYE_API_KEY) {
+    this.birdeyeKey = birdeyeKey;
   }
 
-  private cgHeaders(): HeadersInit {
-    return this.cgKey ? { "x-cg-pro-api-key": this.cgKey } : {};
-  }
-
-  private cgBase(): string {
-    return this.cgKey ? "https://pro-api.coingecko.com/api/v3" : "https://api.coingecko.com/api/v3";
-  }
-
-  async lookup(query: string): Promise<PriceData> {
-    const cg = await this.tryCoinGecko(query).catch(() => null);
-    if (cg) return cg;
-    const dx = await this.tryDexScreener(query).catch(() => null);
+  /** Look up market data for a Solana token mint / contract address. */
+  async lookupByMint(mint: string): Promise<PriceData> {
+    const be = await this.tryBirdeye(mint).catch(() => null);
+    if (be) return be;
+    const dx = await this.tryDexScreener(mint).catch(() => null);
     if (dx) return dx;
     return { ...EMPTY };
   }
 
-  private async tryCoinGecko(query: string): Promise<PriceData | null> {
-    const searchRes = await fetch(
-      `${this.cgBase()}/search?query=${encodeURIComponent(query)}`,
-      { headers: this.cgHeaders() },
+  private async tryBirdeye(mint: string): Promise<PriceData | null> {
+    if (!this.birdeyeKey) return null;
+    const res = await fetch(
+      `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(mint)}`,
+      { headers: { "X-API-KEY": this.birdeyeKey, "x-chain": "solana" } },
     );
-    if (!searchRes.ok) return null;
-    const search = (await searchRes.json()) as {
-      coins?: { id: string; symbol: string }[];
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: {
+        symbol?: string;
+        price?: number;
+        marketCap?: number;
+        mc?: number;
+        v24hUSD?: number;
+        liquidity?: number;
+      };
     };
-    const coin = search.coins?.[0];
-    if (!coin) return null;
-
-    const mktRes = await fetch(
-      `${this.cgBase()}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(coin.id)}`,
-      { headers: this.cgHeaders() },
-    );
-    if (!mktRes.ok) return null;
-    const markets = (await mktRes.json()) as {
-      current_price?: number;
-      market_cap?: number;
-      total_volume?: number;
-    }[];
-    const m = markets[0];
-    if (!m) return null;
-
+    const d = body.data;
+    if (!body.success || !d) return null;
     return {
-      token: coin.symbol.toUpperCase(),
-      marketCapUsd: m.market_cap ?? null,
-      volume24hUsd: m.total_volume ?? null,
-      priceUsd: m.current_price ?? null,
-      source: "coingecko",
-      notes: `Matched CoinGecko id '${coin.id}'.`,
+      token: d.symbol ?? null,
+      marketCapUsd: d.marketCap ?? d.mc ?? null,
+      volume24hUsd: d.v24hUSD ?? null,
+      priceUsd: d.price ?? null,
+      source: "birdeye",
+      notes: `Birdeye token_overview for ${short(mint)}.`,
     };
   }
 
-  private async tryDexScreener(query: string): Promise<PriceData | null> {
+  private async tryDexScreener(address: string): Promise<PriceData | null> {
     const res = await fetch(
-      `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`,
+      `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(address)}`,
     );
     if (!res.ok) return null;
     const data = (await res.json()) as {
@@ -93,16 +85,18 @@ export class PriceProvider {
         volume?: { h24?: number };
       }[];
     };
-    const pair = data.pairs?.[0];
+    // Most-liquid pair first.
+    const pair = (data.pairs ?? []).sort(
+      (a, b) => (b.volume?.h24 ?? 0) - (a.volume?.h24 ?? 0),
+    )[0];
     if (!pair) return null;
-
     return {
       token: pair.baseToken?.symbol?.toUpperCase() ?? null,
       marketCapUsd: pair.marketCap ?? pair.fdv ?? null,
       volume24hUsd: pair.volume?.h24 ?? null,
       priceUsd: pair.priceUsd ? Number(pair.priceUsd) : null,
       source: "dexscreener",
-      notes: "Matched via DexScreener pair search.",
+      notes: `DexScreener token lookup by address ${short(address)}.`,
     };
   }
 }

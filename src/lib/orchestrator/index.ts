@@ -58,7 +58,7 @@ export async function analyzeCandidate(
     },
     providers: opts.providers ?? defaultProviders(),
     xUser: null,
-    hints: { websiteUrl: null, githubUrl: null },
+    hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
     log,
   };
 
