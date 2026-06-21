@@ -14,8 +14,10 @@
     "trigger:dev": "trigger.dev dev",
     "trigger:deploy": "trigger.dev deploy",
     "seed": "tsx scripts/seed-signal-sources.ts",
+    "seed:fixtures": "tsx scripts/seed-fixtures.ts",
     "scout": "tsx scripts/run-orchestrator.ts",
-    "analyze": "tsx scripts/analyze.ts"
+    "analyze": "tsx scripts/analyze.ts",
+    "score": "tsx scripts/score.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",

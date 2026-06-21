@@ -5,6 +5,8 @@ import {
   priceContextScore,
   toVerdict,
   redFlagPenalty,
+  isPenaltyExempt,
+  DEFAULT_SCORING,
 } from "@/lib/schema/scoring";
 import { analysisReportSchema } from "@/lib/schema/analysis";
 import { makeReport } from "@/lib/schema/fixtures";
@@ -68,6 +70,46 @@ describe("redFlagPenalty", () => {
       message: "",
     }));
     expect(redFlagPenalty(tenHigh)).toBeLessThanOrEqual(30);
+  });
+
+  it("exempts normal early-stage traits (pump.fun / anon team) from penalty", () => {
+    expect(
+      redFlagPenalty([
+        { severity: "high", code: "pump_fun_token", message: "Bio CA ends in 'pump'." },
+        { severity: "high", code: "anonymous_team", message: "No named founders disclosed." },
+        { severity: "high", code: "key_person_risk", message: "One pseudonymous dev." },
+      ]),
+    ).toBe(0);
+  });
+
+  it("still penalizes genuine risk flags alongside exempt ones", () => {
+    // pump.fun + anon are exempt; only no_code (high=12) counts.
+    expect(
+      redFlagPenalty([
+        { severity: "high", code: "pump_fun_token", message: "pump.fun launch" },
+        { severity: "high", code: "no_code", message: "No repo behind AI claims." },
+      ]),
+    ).toBe(12);
+  });
+});
+
+describe("isPenaltyExempt", () => {
+  it("matches pump.fun / bonding curve / anon, not real risks", () => {
+    expect(isPenaltyExempt({ severity: "high", code: "pump_fun_token", message: "" })).toBe(true);
+    expect(isPenaltyExempt({ severity: "high", code: "x", message: "pseudonymous solo dev" })).toBe(true);
+    expect(isPenaltyExempt({ severity: "high", code: "no_code", message: "no repository" })).toBe(false);
+  });
+});
+
+describe("computeScores config override", () => {
+  it("lets a sweep zero out penalties without touching source", () => {
+    const report = makeReport({ redFlags: [{ severity: "high", code: "no_code", message: "" }] });
+    const base = computeScores(report);
+    const noPenalty = computeScores(report, {
+      ...DEFAULT_SCORING,
+      penalty: { high: 0, med: 0, low: 0 },
+    });
+    expect(noPenalty.overall).toBeGreaterThanOrEqual(base.overall);
   });
 });
 

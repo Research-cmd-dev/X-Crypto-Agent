@@ -12,6 +12,8 @@
  * — it runs the graph in-memory and prints the report; use the Trigger.dev
  * pipeline (`analyzeCandidate`) for a persisted run.
  */
+import { writeFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
 import { XApiProvider } from "@/lib/providers/x";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
@@ -28,9 +30,11 @@ function parseHandle(input: string | undefined): string | null {
 }
 
 async function main() {
-  const handle = parseHandle(process.argv[2]);
+  const args = process.argv.slice(2);
+  const save = args.includes("--save"); // cache the report for `npm run score`
+  const handle = parseHandle(args.find((a) => !a.startsWith("--")));
   if (!handle) {
-    console.error("Usage: npm run analyze -- <x-handle | x.com URL>");
+    console.error("Usage: npm run analyze -- <x-handle | x.com URL> [--save]");
     process.exit(1);
   }
   if (!process.env.ANTHROPIC_API_KEY) {
@@ -80,6 +84,15 @@ async function main() {
     console.log("\n=== DEGRADED NODES (failure-tolerant) ===");
     console.log(result.errors);
   }
+
+  if (save) {
+    const dir = path.resolve("fixtures/reports");
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${handle}.json`);
+    writeFileSync(file, JSON.stringify(result.report, null, 2));
+    console.log(`\n💾 Saved report -> ${path.relative(process.cwd(), file)} (re-score instantly with: npm run score)`);
+  }
+
   console.log(`\n✅ Done in ${secs}s — verdict: ${result.scores.verdict} (${result.scores.overall}/100)\n`);
 }
 

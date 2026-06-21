@@ -157,16 +157,41 @@ overall = 0.25·profile + 0.20·website + 0.20·github
 verdict = overall ≥ 70 → High | ≥ 40 → Monitor | else Avoid
 ```
 
-`redFlagPenalty` (per-severity weights high −12 / med −5 / low −2) is intentionally
-**not** a raw sum: flags apply strongest-first with diminishing returns
-(`RED_FLAG_DECAY`) and the total is capped (`MAX_RED_FLAG_PENALTY`). This de-rates
-a project by its risks instead of letting a pile of model-emitted flags auto-fail
-an otherwise strong one — and it dampens run-to-run variance in how many flags the
-model surfaces.
+**Sub-scores** (each 0–100, clamped): `profile` = follower quality, `website`,
+`github`, `engagement` = momentum, `technicalDepth`, `price` = liquidity context.
 
-The price/liquidity sub-score is derived from 24h-volume-to-market-cap
-(pre-token projects are treated as neutral). Tune the weights/thresholds in one
-place.
+**Red-flag penalty.** `redFlagPenalty` (per-severity weights high −12 / med −5 /
+low −2) is intentionally **not** a raw sum: flags apply strongest-first with
+diminishing returns (`RED_FLAG_DECAY`) and the total is capped
+(`MAX_RED_FLAG_PENALTY`), so a pile of model-emitted flags can't auto-fail an
+otherwise strong project. The goal is **super-early projects that could be real**,
+so normal early-stage traits carry **zero penalty** — `PENALTY_EXEMPT_PATTERNS`
+exempts pump.fun / bonding-curve launches and anonymous / pseudonymous teams
+(having any real dev or code at all is a positive). Penalties are reserved for
+genuine low-legitimacy signals (no code, plagiarism, fake partnerships, honeypots,
+bot-only engagement).
+
+Every knob lives in `DEFAULT_SCORING` (`ScoringConfig`) and `computeScores`
+accepts a config override, so calibration can be swept without editing source.
+
+### Calibrating fast (no API calls)
+
+The expensive part (research + synthesis) is cached once; scoring is then instant:
+
+```bash
+npm run analyze -- c0mputeAI --save   # run the swarm once, cache the report (~2-3 min)
+npm run seed:fixtures                 # add synthetic good/bad anchor reports
+npm run score                         # re-score every cached report in ~0.5s
+
+# sweep variables instantly via env overrides — no edits, no API calls:
+RF_HIGH=0 RF_CAP=20 npm run score
+W_GITHUB=0.30 W_TECH=0.20 W_PROFILE=0.10 npm run score
+V_MONITOR=55 npm run score
+```
+
+Cached reports live in `fixtures/reports/*.json`. Overrides: weights
+`W_PROFILE W_WEBSITE W_GITHUB W_ENGAGEMENT W_TECH W_PRICE`, penalties
+`RF_HIGH RF_MED RF_LOW`, `RF_DECAY`, `RF_CAP`, thresholds `V_HIGH V_MONITOR`.
 
 ---
 
@@ -183,6 +208,13 @@ calls Claude, so needs `ANTHROPIC_API_KEY`; does not touch Supabase):
 
 ```bash
 npm run scout
+```
+
+Run the full swarm against one **real** X account (no Supabase), and optionally
+cache it for the scoring loop:
+
+```bash
+npm run analyze -- <handle | x.com URL> [--save]
 ```
 
 ---

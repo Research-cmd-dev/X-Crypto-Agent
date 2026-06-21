@@ -1,0 +1,82 @@
+{
+  "account": {
+    "handle": "_synthetic-empty-shell",
+    "userId": "1234567890",
+    "displayName": "Empty Shell",
+    "bio": "Building the future of decentralized X.",
+    "verified": false,
+    "createdAt": "2024-01-01",
+    "location": null
+  },
+  "profile": {
+    "followerCount": 12000,
+    "followingCount": 300,
+    "followerRatio": 40,
+    "followerSpikes": [],
+    "followerQuality": {
+      "score": 12,
+      "notes": "Bot-like, purchased-looking followers."
+    },
+    "notableFollowers": []
+  },
+  "website": {
+    "url": null,
+    "detected": false,
+    "score": 8,
+    "design": "Clean but templated.",
+    "documentation": "Light docs, no whitepaper.",
+    "roadmap": "Vague roadmap.",
+    "teamInfo": "Anonymous team.",
+    "githubLinksOnSite": [],
+    "notes": "Adequate but unremarkable."
+  },
+  "github": {
+    "url": null,
+    "detected": false,
+    "score": 0,
+    "activity": "No public repo found.",
+    "stars": null,
+    "relevance": "n/a",
+    "recentCommits": null,
+    "contributors": null,
+    "notes": "No GitHub presence detected."
+  },
+  "developers": [],
+  "engagement": {
+    "momentumScore": 18,
+    "avgLikes": 120,
+    "avgReposts": 30,
+    "cadence": "Several posts per day.",
+    "notes": "Steady but not viral."
+  },
+  "technicalDepth": {
+    "score": 8,
+    "notes": "Pure hype, no technical substance."
+  },
+  "price": {
+    "token": "SHELL",
+    "marketCapUsd": 30000000,
+    "volume24hUsd": 5000,
+    "priceUsd": 0.03,
+    "source": "dexscreener",
+    "notes": "Almost no liquidity."
+  },
+  "redFlags": [
+    {
+      "severity": "high",
+      "code": "no_code",
+      "message": "No repository or product behind grand AI claims."
+    },
+    {
+      "severity": "high",
+      "code": "fake_partnership",
+      "message": "Fabricated partnership with a major lab."
+    },
+    {
+      "severity": "med",
+      "code": "bot_engagement",
+      "message": "Engagement is bot-driven, no organic substance."
+    }
+  ],
+  "summary": "An early-stage project with moderate traction and thin technical depth."
+}

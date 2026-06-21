@@ -1,0 +1,82 @@
+{
+  "account": {
+    "handle": "_synthetic-early-gem",
+    "userId": "1234567890",
+    "displayName": "Early Gem",
+    "bio": "Building the future of decentralized X.",
+    "verified": false,
+    "createdAt": "2024-01-01",
+    "location": null
+  },
+  "profile": {
+    "followerCount": 12000,
+    "followingCount": 300,
+    "followerRatio": 40,
+    "followerSpikes": [],
+    "followerQuality": {
+      "score": 55,
+      "notes": "Mostly small but organic followers."
+    },
+    "notableFollowers": []
+  },
+  "website": {
+    "url": "https://gem.example",
+    "detected": true,
+    "score": 66,
+    "design": "Clean but templated.",
+    "documentation": "Light docs, no whitepaper.",
+    "roadmap": "Vague roadmap.",
+    "teamInfo": "Anonymous team.",
+    "githubLinksOnSite": [],
+    "notes": "Adequate but unremarkable."
+  },
+  "github": {
+    "url": "https://github.com/anon/gem",
+    "detected": true,
+    "score": 76,
+    "activity": "No public repo found.",
+    "stars": 40,
+    "relevance": "n/a",
+    "recentCommits": 60,
+    "contributors": 1,
+    "notes": "No GitHub presence detected."
+  },
+  "developers": [],
+  "engagement": {
+    "momentumScore": 60,
+    "avgLikes": 120,
+    "avgReposts": 30,
+    "cadence": "Several posts per day.",
+    "notes": "Steady but not viral."
+  },
+  "technicalDepth": {
+    "score": 80,
+    "notes": "Real, reproducible open-source engine."
+  },
+  "price": {
+    "token": "GEM",
+    "marketCapUsd": 7000000,
+    "volume24hUsd": 4500000,
+    "priceUsd": 0.007,
+    "source": "birdeye",
+    "notes": "Healthy liquidity."
+  },
+  "redFlags": [
+    {
+      "severity": "high",
+      "code": "pump_fun_token",
+      "message": "Bio CA ends in 'pump' (pump.fun launch)."
+    },
+    {
+      "severity": "high",
+      "code": "anonymous_team",
+      "message": "Pseudonymous solo developer."
+    },
+    {
+      "severity": "med",
+      "code": "marketing_ahead_of_product",
+      "message": "Token marketing slightly ahead of the product."
+    }
+  ],
+  "summary": "An early-stage project with moderate traction and thin technical depth."
+}

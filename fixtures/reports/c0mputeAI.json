@@ -1,0 +1,128 @@
+{
+  "account": {
+    "handle": "c0mputeAI",
+    "userId": "2013677756509282305",
+    "displayName": "c0mpute",
+    "bio": "Uncensored, private, decentralized AI inference network.\n\nCA: EmcxFTNVDqyLHp11NvwvLZ4D7LKGbG9i7B8RF7dwpump",
+    "verified": false,
+    "createdAt": "2026-01-20T18:19:32.000Z",
+    "location": null
+  },
+  "profile": {
+    "followerCount": 4689,
+    "followingCount": 3,
+    "followerRatio": 1563,
+    "followerSpikes": [
+      {
+        "date": "2026-06",
+        "delta": 4000,
+        "note": "Low-confidence: growth appears concentrated around the Virtuals integration and $ZERO token launch milestones rather than a single suspicious overnight bot spike. Cannot confirm precise timing from provided data."
+      }
+    ],
+    "followerQuality": {
+      "score": 45,
+      "notes": "Follower sample is dominated by very-low-follower accounts (several with 0-60 followers) and generic crypto-degen / '1000XGEM' / 'ambassador' style handles. A few mid-size accounts appear (@palxzxz ~2.6k, @TruthMaximalist ~1.9k) but none are recognized institutional or builder names. Typical low-signal pump.fun/CT early-launch follower mix; not clearly purchased bots, but low quality/relevance."
+    },
+    "notableFollowers": []
+  },
+  "website": {
+    "url": "https://c0mpute.ai",
+    "detected": true,
+    "score": 68,
+    "design": "Polished, custom-built interface rather than a generic template. Marketing page uses custom iconography, animated/scrolling sections, and consistent branding around a 'No data centers. No corporations.' theme. Critically, this is a functional application, not just a landing page: the web interface supports Privy authentication, tier selection, and real-time streamed token responses via Socket.io, with live working pages (chat, create, earn, staking, treasury). Strong UX investment. ~78/100.",
+    "documentation": "Strongest dimension (~80/100). A structured Docusaurus-based docs site covers architecture, token economics, staking, referrals, image generation, an API reference, and user/worker guides. Genuinely specific technical detail: three components (user client, orchestrator, workers); browser workers use WebGPU via WebLLM while native workers use ollama with CUDA/Metal/Vulkan; orchestrator matches requests to idle workers by weighted-random selection. Tokenomics are explicit (workers keep 70%, 30% network margin to treasury; 35% of $ZERO trade fees to treasury). No formal whitepaper PDF, but docs substitute effectively.",
+    "roadmap": "Weakest area (~35/100). No dedicated, forward-looking roadmap with dated milestones or phased deliverables. The blog functions as a changelog of already-shipped features (open coding agent live, auto-compounding for stakers, in-chat image generation, image API endpoint). Shipping cadence is a positive credibility signal, but the absence of an explicit future roadmap lowers the score.",
+    "teamInfo": "Effectively anonymous (~20/100). No named founders, bios, or credible team identities on the marketing site or docs. The only identity-adjacent signal is a GitHub handle ('leyten') and privacy-focused 'owned by no one' framing. For a project handling user funds (USDC credits, on-chain staking, a treasury), the lack of any accountable, named team is a meaningful warning sign.",
+    "githubLinksOnSite": [
+      "https://github.com/leyten/c0mpute"
+    ],
+    "notes": "A functional, well-documented product with a polished custom interface and a coherent, technically specific architecture — clearly more substantial than the typical slick-landing-page-with-nothing-behind-it. Documentation depth and a live working app are genuine strengths. Two skeptic's red flags remain: (1) no named or credible team despite handling real user funds and on-chain staking; and (2) the advertised GitHub repo (github.com/leyten/c0mpute) returned a permission/access error and could not be confirmed public, leaving 'open source' claims unverified. No genuine forward-looking roadmap, only a shipped-features changelog. Heavily token-incentive-driven economics (buyback-and-burn plus staking rewards) warrant the usual caution. Net: technically credible execution, but anonymity and unverifiable code provenance should temper trust pending independent verification. Website/disclosure quality only; not financial advice."
+  },
+  "github": {
+    "url": "https://github.com/leyten/shard",
+    "detected": true,
+    "score": 74,
+    "activity": "Actively developed and current. Last push 2026-06-21, with ~66 commits in the last 90 days indicating a real, sustained development cadence rather than a dormant or abandoned project. Only 2 open issues and minimal external PR activity, consistent with a young, small/solo-driven project rather than neglect.",
+    "stars": 291,
+    "relevance": "High. The repository directly implements its stated purpose: pipeline-parallel LLM inference across GPUs on separate machines. The codebase (Python/Go/Shell) contains substantive engineering — a phase0/ implementation with runnable node and benchmark scripts, a shard engine module, architecture docs, custom network transport, KV-cache handling, and reproducible/falsifiable benchmark figures. It is an original, non-forked repo, not empty scaffolding. Verifiable-receipt design (GPU UUIDs, IPs, token hashes) and candid disclosure of open problems (activation privacy leakage) further indicate genuine, claim-matching work.",
+    "recentCommits": 66,
+    "contributors": 0,
+    "notes": "A technically credible, actively developed repository whose engineering substance is strong: original pipeline-parallel inference code, reproducible benchmarks, verifiable-receipt design, and honest handling of open problems. Externally validated by a reported Virtuals Protocol integration (splitting a 744B model across GPUs over WAN, Crypto Briefing, June 2026). Strengths: relevance, originality, recent commit activity (66 in 90d), 291 stars, 35 forks. Risks/weaknesses: effectively a single pseudonymous maintainer (bus-factor-1, GitHub reports 0 distinct contributors), no published releases, and an attached pump.fun-style token (c0mpute, CA ...pump) that introduces speculative crypto-promotional risk independent of code quality. Note: provided metrics (291 stars, 66 recent commits) differ from an older snapshot cited in research (1 star, 16 commits); the live, higher numbers are used here and reflect a more mature state. Larger-scale 744B WAN benchmark claims come from README/press and were not independently re-executed."
+  },
+  "developers": [
+    {
+      "handle": "leyten",
+      "name": "leyten",
+      "githubUrl": "https://github.com/leyten/shard",
+      "signals": [
+        "Owns the working 'shard' pipeline-parallel inference engine cited across the account's tweets (~242 stars)",
+        "Ships verifiable, technically detailed work: per-run receipts with GPU UUIDs/IPs/regions, token hashes, PROOF.md",
+        "Demonstrable running benchmarks (25->40 tok/s on gpt-oss-120B; GLM-5.2 across 6x RTX PRO 6000 over WAN)",
+        "Honest disclosure of privacy limitations (nodes decrypt to run their layer; activations can leak tokens) rather than overclaiming",
+        "Pseudonymous / 'Anon' GitHub org (context, not a negative at this stage)"
+      ],
+      "qualityNote": "High-quality, hands-on systems/ML engineer with demonstrably running, publicly-starred code. Strong authenticity signal and the core of the project's credibility."
+    },
+    {
+      "handle": "onlyzhynx",
+      "name": null,
+      "githubUrl": null,
+      "signals": [
+        "Produced an explainer video on the sharding protocol referenced in the account's tweets",
+        "Likely contributor or technical community voice; lower confidence"
+      ],
+      "qualityNote": "Apparent contributor/community technical voice. Relationship and depth unverified; treat as low confidence."
+    },
+    {
+      "handle": "leyten",
+      "name": "leyten",
+      "githubUrl": "https://github.com/leyten",
+      "signals": [
+        "Sole owner and primary author of the shard repository",
+        "Original, non-forked systems work demonstrating real expertise (pipeline parallelism, KV-cache, custom TCP/QUIC transport, speculative decoding)",
+        "Named directly in third-party press (Crypto Briefing) as the builder behind the shard engine and the Virtuals Protocol integration",
+        "Maintains ~13 GitHub repositories including solcord (TypeScript) and a personal repo (JavaScript)",
+        "Linked X account @leyten",
+        "Pseudonymous with low social footprint (low followers/following at capture), limiting identity verification"
+      ],
+      "qualityNote": "Appears to be a genuine, technically capable engineer with real distributed-systems and ML-inference knowledge. The shard codebase reflects substantive engineering rather than low-effort crypto scaffolding. Main caveats are pseudonymity and the single-maintainer (bus-factor-1) nature of the project, plus the speculative token attached to otherwise credible infrastructure."
+    }
+  ],
+  "engagement": {
+    "momentumScore": 62,
+    "avgLikes": 75,
+    "avgReposts": 39,
+    "cadence": "Bursty, clustered around engineering milestones and the Virtuals partnership push; heavy reliance on RTs of @leyten and @virtuals_io.",
+    "notes": "Original (non-RT) tweets pull respectable numbers relative to ~4.7k followers (e.g. 401/80/87, 375/84/84, 264/61/38). Comment counts roughly track likes/reposts, suggesting organic conversation rather than pure like-botting. RTs show 0 native likes, which is normal. Real momentum, partly amplified by the Virtuals partnership."
+  },
+  "technicalDepth": {
+    "score": 82,
+    "notes": "Unusually high for a pump.fun-era token account. Tweets describe concrete, falsifiable engineering (improving tok/s benchmarks, GLM-5.2 over WAN) backed by a public, starred repo and verifiable receipts. Genuine distributed pipeline-parallel inference work that slices large models across networked GPUs, not marketing vapor. Live product with docs and blog."
+  },
+  "price": {
+    "token": null,
+    "marketCapUsd": null,
+    "volume24hUsd": null,
+    "priceUsd": null,
+    "source": "none",
+    "notes": "No token / market data found for this project."
+  },
+  "redFlags": [
+    {
+      "severity": "low",
+      "code": "low_signal_followers",
+      "message": "Follower base is largely low-follower, generic crypto-degen accounts ('1000XGEM'/'ambassador' style); reach quality is weak even though there's no clear evidence of purchased bots."
+    },
+    {
+      "severity": "low",
+      "code": "website_provenance_unclear",
+      "message": "A separate c0mpute.com CLI-first site exists and may be a different/unrelated project or a namesquat. Confirm which domain and which GitHub org (leyten/shard vs github.com/c0mpute) is canonical."
+    },
+    {
+      "severity": "low",
+      "code": "token_utility_unclear",
+      "message": "Live product is paid in USDC credits (1 credit = $0.01) and explicitly states no token is needed to use c0mpute, leaving the $ZERO token's utility/staking role and value accrual ambiguous."
+    }
+  ],
+  "summary": "c0mpute is a rare early-stage project with genuine substance: a working, publicly verifiable pipeline-parallel inference engine (leyten/shard, ~242 stars), a live product with docs/blog/USDC credits, real improving benchmarks, and an independently-reported Virtuals Protocol integration running GLM-5.2 over WAN. The pseudonymous lead developer (@leyten) shows strong systems/ML engineering and notably honest disclosure of privacy limitations rather than overhype. Main risks are typical of the stage: a low-signal degen follower base, a pump.fun token ($ZERO) whose utility-vs-USDC-credit model needs clarity, and the need to confirm the canonical website and GitHub org. Net: high authenticity and above-average upside for a super-early account, with token economics and provenance as the items to watch."
+}

@@ -14,13 +14,11 @@ export const WEIGHTS = {
 /**
  * Red-flag penalties, subtracted from the weighted base (floored at 0 in
  * `computeScores`). Three guards stop a handful of flags from auto-failing an
- * otherwise strong project — a real one (e.g. a credible, shipping team that
- * happens to launch via pump.fun) should be *de-rated by* its risks, not zeroed:
+ * otherwise strong project — a real one should be *de-rated by* its risks, not
+ * zeroed:
  *   1. Modest per-severity weights.
  *   2. Diminishing returns — flags apply strongest-first, each subsequent one
- *      discounted by RED_FLAG_DECAY. Piling on correlated flags (and the
- *      run-to-run variance in how many the model emits) then has limited
- *      marginal effect.
+ *      discounted by RED_FLAG_DECAY (dampens flag-stacking + run-to-run variance).
  *   3. MAX_RED_FLAG_PENALTY caps the total drag.
  */
 export const RED_FLAG_PENALTY: Record<RedFlag["severity"], number> = {
@@ -38,8 +36,44 @@ export const MAX_RED_FLAG_PENALTY = 30;
 /** Verdict thresholds on the overall score. */
 export const VERDICT_THRESHOLDS = { high: 70, monitor: 40 } as const;
 
+/**
+ * Flags that must NOT reduce the score. The goal is to surface *super-early*
+ * projects that could be real, so traits that are simply normal at that stage
+ * carry zero penalty:
+ *   - pump.fun / bonding-curve launches — how most early Solana projects start.
+ *   - anonymous / pseudonymous teams — the norm in crypto; having ANY real dev
+ *     or code at all is a positive, not a risk.
+ * Matched against the flag code AND message, so it is robust to model wording.
+ */
+export const PENALTY_EXEMPT_PATTERNS: RegExp[] = [
+  /pump[\s._-]?fun|bonding[\s._-]?curve/i,
+  /\b(anon|anonymous|pseudonym|undoxx|no[\s._-]?doxx|unknown[\s._-]?team|key[\s._-]?person)/i,
+];
+
 export const verdictSchema = z.enum(["High", "Monitor", "Avoid"]);
 export type Verdict = z.infer<typeof verdictSchema>;
+
+/**
+ * Every tunable scoring knob in one object so calibration can be swept without
+ * editing source (see scripts/score.ts). Defaults come from the consts above.
+ */
+export interface ScoringConfig {
+  weights: Record<keyof typeof WEIGHTS, number>;
+  penalty: Record<RedFlag["severity"], number>;
+  decay: number;
+  maxPenalty: number;
+  thresholds: { high: number; monitor: number };
+  exemptPatterns: RegExp[];
+}
+
+export const DEFAULT_SCORING: ScoringConfig = {
+  weights: { ...WEIGHTS },
+  penalty: { ...RED_FLAG_PENALTY },
+  decay: RED_FLAG_DECAY,
+  maxPenalty: MAX_RED_FLAG_PENALTY,
+  thresholds: { ...VERDICT_THRESHOLDS },
+  exemptPatterns: PENALTY_EXEMPT_PATTERNS,
+};
 
 export interface ScoreBreakdown {
   profile: number;
@@ -58,6 +92,15 @@ export function clampScore(n: number | null | undefined): number {
   return Math.max(0, Math.min(100, Math.round(n)));
 }
 
+/** True if a flag is a normal early-stage trait and must not be penalized. */
+export function isPenaltyExempt(
+  flag: RedFlag,
+  patterns: RegExp[] = PENALTY_EXEMPT_PATTERNS,
+): boolean {
+  const hay = `${flag.code} ${flag.message}`;
+  return patterns.some((re) => re.test(hay));
+}
+
 /**
  * Derive a transparent 0-100 "market/liquidity context" score from price data.
  * Pre-token projects are treated as neutral (not penalized for having no token).
@@ -73,26 +116,36 @@ export function priceContextScore(price: Price): number {
   return 25; // very thin liquidity — often a warning sign
 }
 
-export function redFlagPenalty(flags: RedFlag[]): number {
+export function redFlagPenalty(
+  flags: RedFlag[],
+  cfg: ScoringConfig = DEFAULT_SCORING,
+): number {
   const weights = flags
-    .map((f) => RED_FLAG_PENALTY[f.severity] ?? 0)
+    .filter((f) => !isPenaltyExempt(f, cfg.exemptPatterns))
+    .map((f) => cfg.penalty[f.severity] ?? 0)
     .filter((w) => w > 0)
     .sort((a, b) => b - a); // strongest first
-  const raw = weights.reduce((sum, w, i) => sum + w * RED_FLAG_DECAY ** i, 0);
-  return Math.min(MAX_RED_FLAG_PENALTY, Math.round(raw));
+  const raw = weights.reduce((sum, w, i) => sum + w * cfg.decay ** i, 0);
+  return Math.min(cfg.maxPenalty, Math.round(raw));
 }
 
-export function toVerdict(overall: number): Verdict {
-  if (overall >= VERDICT_THRESHOLDS.high) return "High";
-  if (overall >= VERDICT_THRESHOLDS.monitor) return "Monitor";
+export function toVerdict(
+  overall: number,
+  thresholds: { high: number; monitor: number } = DEFAULT_SCORING.thresholds,
+): Verdict {
+  if (overall >= thresholds.high) return "High";
+  if (overall >= thresholds.monitor) return "Monitor";
   return "Avoid";
 }
 
 /**
  * Deterministic, auditable scoring: weighted combine of clamped sub-scores
- * minus red-flag penalties, mapped to a verdict.
+ * minus red-flag penalties, mapped to a verdict. Pass a `cfg` to sweep knobs.
  */
-export function computeScores(report: AnalysisReport): ScoreBreakdown {
+export function computeScores(
+  report: AnalysisReport,
+  cfg: ScoringConfig = DEFAULT_SCORING,
+): ScoreBreakdown {
   const profile = clampScore(report.profile.followerQuality.score);
   const website = clampScore(report.website.score);
   const github = clampScore(report.github.score);
@@ -100,15 +153,16 @@ export function computeScores(report: AnalysisReport): ScoreBreakdown {
   const technicalDepth = clampScore(report.technicalDepth.score);
   const price = clampScore(priceContextScore(report.price));
 
+  const w = cfg.weights;
   const weighted =
-    WEIGHTS.profile * profile +
-    WEIGHTS.website * website +
-    WEIGHTS.github * github +
-    WEIGHTS.engagement * engagement +
-    WEIGHTS.technicalDepth * technicalDepth +
-    WEIGHTS.price * price;
+    w.profile * profile +
+    w.website * website +
+    w.github * github +
+    w.engagement * engagement +
+    w.technicalDepth * technicalDepth +
+    w.price * price;
 
-  const overall = clampScore(weighted - redFlagPenalty(report.redFlags));
+  const overall = clampScore(weighted - redFlagPenalty(report.redFlags, cfg));
 
   return {
     profile,
@@ -118,6 +172,6 @@ export function computeScores(report: AnalysisReport): ScoreBreakdown {
     technicalDepth,
     price,
     overall,
-    verdict: toVerdict(overall),
+    verdict: toVerdict(overall, cfg.thresholds),
   };
 }
