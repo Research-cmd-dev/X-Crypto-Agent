@@ -19,7 +19,8 @@
     "backfill": "tsx scripts/backfill-historical.ts",
     "onchain-demo": "tsx scripts/onchain-demo.ts",
     "migration-demo": "tsx scripts/migration-demo.ts",
-    "scanner-demo": "tsx scripts/scanner-demo.ts"
+    "scanner-demo": "tsx scripts/scanner-demo.ts",
+    "analyze": "tsx scripts/analyze-handle.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",
