@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { ScoreBar } from "@/components/score-bar";
+import { explainScore } from "@/lib/schema/scoring";
 import type { CandidateDetail } from "@/lib/data/candidates";
 import type { FlagSeverity } from "@/lib/supabase/types";
 
@@ -52,21 +53,46 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
         </p>
       ) : (
         <div className="mt-6 space-y-6">
-          {score ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Score breakdown</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <ScoreBar label="Profile" score={score.profile} />
-                <ScoreBar label="Website" score={score.website} />
-                <ScoreBar label="GitHub" score={score.github} />
-                <ScoreBar label="Engagement" score={score.engagement} />
-                <ScoreBar label="Technical depth" score={score.technical_depth} />
-                <ScoreBar label="Price/liquidity" score={score.price} />
-              </CardContent>
-            </Card>
-          ) : null}
+          {(() => {
+            const ex = explainScore(report);
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Why this score</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm">{ex.headline}</p>
+                  <div className="space-y-1.5">
+                    {ex.contributions.map((c) => (
+                      <div key={c.key} className="flex items-center gap-2 text-xs">
+                        <span className="w-32 shrink-0 text-muted-foreground">{c.label}</span>
+                        <div className="w-40 shrink-0">
+                          <ScoreBar score={c.score} showValue={false} />
+                        </div>
+                        <span className="w-10 text-right tabular-nums">{c.score}</span>
+                        <span className="w-24 text-right text-muted-foreground tabular-nums">
+                          {(c.weight * 100).toFixed(0)}% → +{c.points}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {ex.penalties.length > 0 ? (
+                    <div className="border-t pt-2 text-xs">
+                      {ex.penalties.map((p, i) => (
+                        <div key={`${p.code}-${i}`} className="flex justify-between text-muted-foreground">
+                          <span>
+                            <Badge variant={SEVERITY_VARIANT[p.severity]}>{p.severity}</Badge>{" "}
+                            <span className="font-mono">{p.code}</span>
+                          </span>
+                          <span className="tabular-nums">−{p.points}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           <Card>
             <CardHeader>
@@ -95,6 +121,18 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
               </CardContent>
             </Card>
           ) : null}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Smart money{" "}
+                <span className="text-muted-foreground">· {report.smartMoney.score}/100</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              <p>{report.smartMoney.notes}</p>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-6 md:grid-cols-2">
             <Card>
@@ -128,6 +166,10 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <Fact k="Momentum" v={`${report.engagement.momentumScore}/100`} />
+                <Fact
+                  k="Engagement rate"
+                  v={report.engagement.engagementRate != null ? `${report.engagement.engagementRate}%` : "—"}
+                />
                 <Fact k="Avg likes" v={report.engagement.avgLikes?.toLocaleString() ?? "—"} />
                 <Fact k="Avg reposts" v={report.engagement.avgReposts?.toLocaleString() ?? "—"} />
                 <p className="text-muted-foreground">{report.engagement.notes}</p>
