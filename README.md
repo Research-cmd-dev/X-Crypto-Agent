@@ -145,21 +145,57 @@ dashboard as each candidate is analyzed.
 
 ---
 
+## Alpha thesis
+
+The system is tuned to find **low-float early gems that smart money is piling
+into before the crowd.** That thesis drives the scoring weights and the seed
+signal accounts — it is the thing to change if your edge is different.
+
+- **Smart money is weighted highest** — a tiny project already followed/engaged
+  by reputable funds, known builders, or sharp traders is the strongest signal.
+- **Earliness / low float** rewards young-but-established accounts, small-but-real
+  followings, and microcap / pre-token stage (the timing edge).
+- **Engagement momentum** (incl. engagement rate — high engagement on a *small*
+  account = a real, sticky community) is a leading indicator.
+- **Website / GitHub** carry less *positive* weight (early gems rarely have mature
+  sites/repos) but still feed **red flags** as a scam/credibility check.
+- **Red flags stay harsh** so the "High" list stays scam-free — critical for
+  microcaps.
+
 ## Scoring model
 
-`src/lib/schema/scoring.ts` — deterministic and auditable:
+`src/lib/schema/scoring.ts` — deterministic and auditable. Active profile
+`ALPHA_WEIGHTS` (sums to 1.0):
 
 ```
-overall = 0.25·profile + 0.20·website + 0.20·github
-        + 0.15·engagement + 0.10·technicalDepth + 0.10·price
+overall = 0.28·smartMoney + 0.18·engagement + 0.15·earliness + 0.12·profile
+        + 0.10·technicalDepth + 0.07·website + 0.06·github + 0.04·price
         − redFlagPenalty            (high −15 / med −7 / low −3, floored at 0)
 
 verdict = overall ≥ 70 → High | ≥ 40 → Monitor | else Avoid
 ```
 
-The price/liquidity sub-score is derived from 24h-volume-to-market-cap
-(pre-token projects are treated as neutral). Tune the weights/thresholds in one
-place.
+- `earlinessScore(report)` — deterministic from account age + follower band +
+  market-cap band.
+- `explainScore(report)` — the "why this score" breakdown rendered on the detail
+  page (per-signal point contributions + red-flag penalties + a headline).
+- **Tune the thesis** by editing `ALPHA_WEIGHTS` / `VERDICT_THRESHOLDS` in one
+  place; `explainScore` and the dashboard update automatically.
+
+---
+
+## Caching & rate limiting
+
+`src/lib/cache/store.ts` + `src/lib/util/fetch.ts`:
+
+- **Shared TTL cache** (`provider_cache` table) wraps X profile lookups (1h),
+  GitHub metrics (1h), and price lookups (5m), so repeat lookups across
+  Trigger.dev job runs don't re-hit rate-limited APIs. `cached()` **fails open** —
+  if the cache is unavailable it just calls through.
+- **Backoff** — `fetchWithRetry` retries 429/5xx honoring `retry-after`;
+  `mapLimit` bounds discovery's handle-resolution concurrency.
+- **Anthropic prompt caching** — `cache_control` on the stable agent system
+  prompts cuts repeated-call cost.
 
 ---
 
@@ -167,7 +203,7 @@ place.
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm test            # vitest (scoring + orchestrator partial-failure tolerance)
+npm test            # vitest (scoring, cache, orchestrator partial-failure)
 npm run build       # production Next.js build
 ```
 
@@ -182,13 +218,20 @@ npm run scout
 
 ## Extending
 
-- **Add a signal source** — insert into `signal_sources` (or edit the seed).
+- **Add a signal account** — add an `account`/`query` entry to
+  `scripts/seed-signal-sources.ts` (or insert into `signal_sources`). Curated
+  smart-money accounts are the primary alpha funnel — their @mentions surface
+  gems early.
+- **Tune scoring** — edit `ALPHA_WEIGHTS` / `VERDICT_THRESHOLDS` /
+  `earlinessScore` in `src/lib/schema/scoring.ts`.
 - **Add an agent** — implement the `Agent` interface (`src/lib/agents/types.ts`)
   and add it to the graph in `src/lib/orchestrator/graph.ts`. Nodes are
   failure-tolerant by construction.
+- **Add a cached provider call** — wrap it in `cached(namespace, id, ttlSec, fn)`
+  from `src/lib/cache/store.ts`.
 - **Swap a data provider** — the X provider sits behind the `XProvider`
-  interface (`src/lib/providers/x`), so the real API v2 client can be replaced
-  with `MockXProvider` (used in tests) or another source.
+  interface (`src/lib/providers/x`); the real API v2 client can be replaced with
+  `MockXProvider` (tests) or another source.
 - **Adjust the report shape** — extend the Zod schema in
   `src/lib/schema/analysis.ts`; types, validation, and LLM output update together.
 
