@@ -5,6 +5,7 @@ import { xAnalyzerAgent } from "@/lib/agents/x-analyzer";
 import { websiteAnalyzerAgent } from "@/lib/agents/website-analyzer";
 import { githubAnalyzerAgent } from "@/lib/agents/github-analyzer";
 import { priceAgent } from "@/lib/agents/price-agent";
+import { onchainAgent } from "@/lib/agents/onchain-agent";
 import { runScorer, mergeRedFlags } from "@/lib/agents/scorer";
 
 /** Neutral baseline report so a degraded run still yields a valid object. */
@@ -66,6 +67,15 @@ function emptyReport(handle: string): AnalysisReport {
       source: "none",
       notes: "Not analyzed.",
     },
+    onchain: {
+      holderCount: null,
+      traders24h: null,
+      trades24h: null,
+      firstTradeAt: null,
+      smartMoney: null,
+      source: "none",
+      notes: "Not analyzed.",
+    },
     redFlags: [],
     summary: "",
   };
@@ -100,6 +110,7 @@ function assemble(handle: string, slices: AgentSlice[]): AnalysisReport {
     if (s.engagement) report.engagement = s.engagement;
     if (s.technicalDepth) report.technicalDepth = s.technicalDepth;
     if (s.price) report.price = s.price;
+    if (s.onchain) report.onchain = s.onchain;
     if (s.summary) report.summary = s.summary;
     if (s.redFlags) report.redFlags = mergeRedFlags(report.redFlags, s.redFlags);
     if (s.developers) developers = developers.concat(s.developers);
@@ -129,6 +140,7 @@ export interface GraphAgents {
   website: Agent;
   github: Agent;
   price: Agent;
+  onchain: Agent;
 }
 
 /** Default production agents. Overridable for tests. */
@@ -137,6 +149,7 @@ export const DEFAULT_AGENTS: GraphAgents = {
   website: websiteAnalyzerAgent,
   github: githubAnalyzerAgent,
   price: priceAgent,
+  onchain: onchainAgent,
 };
 
 /**
@@ -155,19 +168,21 @@ export async function runGraph(
   // Node 1 — X analyzer (sequential: sets ctx.xUser + ctx.hints).
   const xSlice = await runNode(agents.x, ctx, errors);
 
-  // Nodes 2-4 — enrichment, parallel (depend on hints from node 1).
-  const [websiteSlice, githubSlice, priceSlice] = await Promise.all([
+  // Nodes 2-5 — enrichment, parallel (depend on hints from node 1).
+  const [websiteSlice, githubSlice, priceSlice, onchainSlice] = await Promise.all([
     runNode(agents.website, ctx, errors),
     runNode(agents.github, ctx, errors),
     runNode(agents.price, ctx, errors),
+    runNode(agents.onchain, ctx, errors),
   ]);
 
-  // Assemble the full report, then score (node 5).
+  // Assemble the full report, then score (final node).
   const report = assemble(ctx.candidate.handle, [
     xSlice,
     websiteSlice,
     githubSlice,
     priceSlice,
+    onchainSlice,
   ]);
 
   const { scores, redFlags } = runScorer(report);

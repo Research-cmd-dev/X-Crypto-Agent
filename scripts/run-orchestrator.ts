@@ -9,6 +9,8 @@
 import { MockXProvider } from "@/lib/providers/x";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
+import { BitqueryProvider } from "@/lib/providers/bitquery";
+import { GmgnProvider } from "@/lib/providers/gmgn";
 import { runGraph } from "@/lib/orchestrator/graph";
 import type { AgentContext } from "@/lib/agents/types";
 
@@ -24,7 +26,13 @@ async function main() {
 
   const ctx: AgentContext = {
     candidate: { id: "dev-run", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi" },
-    providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider() },
+    providers: {
+      x: new MockXProvider(),
+      github: new GithubProvider(),
+      price: new PriceProvider(),
+      bitquery: new BitqueryProvider(),
+      gmgn: new GmgnProvider(),
+    },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
     log: (m, meta) => console.log(`[scout] ${m}`, meta ?? ""),

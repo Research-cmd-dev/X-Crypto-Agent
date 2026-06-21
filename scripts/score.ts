@@ -50,6 +50,7 @@ function configFromEnv(): { cfg: ScoringConfig; overrides: string[] } {
       engagement: t("W_ENGAGEMENT", b.weights.engagement),
       technicalDepth: t("W_TECH", b.weights.technicalDepth),
       price: t("W_PRICE", b.weights.price),
+      onchain: t("W_ONCHAIN", b.weights.onchain),
     },
     penalty: { high: t("RF_HIGH", b.penalty.high), med: t("RF_MED", b.penalty.med), low: t("RF_LOW", b.penalty.low) },
     decay: t("RF_DECAY", b.decay),
@@ -87,7 +88,7 @@ function main() {
   const wsum = Object.values(cfg.weights).reduce((a, b) => a + b, 0);
   console.log(`\nScoring ${reports.length} cached report(s)`);
   console.log(
-    `config: weights P${cfg.weights.profile} W${cfg.weights.website} G${cfg.weights.github} E${cfg.weights.engagement} T${cfg.weights.technicalDepth} $${cfg.weights.price}` +
+    `config: weights P${cfg.weights.profile} W${cfg.weights.website} G${cfg.weights.github} E${cfg.weights.engagement} T${cfg.weights.technicalDepth} $${cfg.weights.price} O${cfg.weights.onchain}` +
       ` | penalty h${cfg.penalty.high}/m${cfg.penalty.med}/l${cfg.penalty.low} decay ${cfg.decay} cap ${cfg.maxPenalty}` +
       ` | verdict >=${cfg.thresholds.high} High >=${cfg.thresholds.monitor} Monitor`,
   );
@@ -96,9 +97,9 @@ function main() {
   console.log();
 
   console.log(
-    `  ${pad("report", 22)}${pad("prof", 6)}${pad("site", 6)}${pad("gh", 6)}${pad("eng", 6)}${pad("tech", 6)}${pad("price", 6)}${pad("pen", 6)}${pad("overall", 9)}verdict`,
+    `  ${pad("report", 22)}${pad("prof", 6)}${pad("site", 6)}${pad("gh", 6)}${pad("eng", 6)}${pad("tech", 6)}${pad("price", 6)}${pad("onch", 6)}${pad("pen", 6)}${pad("overall", 9)}verdict`,
   );
-  console.log(`  ${"-".repeat(74)}`);
+  console.log(`  ${"-".repeat(80)}`);
   const rows = reports
     .map(({ name, report }) => ({
       name,
@@ -108,7 +109,7 @@ function main() {
     .sort((a, b) => b.s.overall - a.s.overall);
   for (const { name, s, pen } of rows) {
     console.log(
-      `  ${pad(name, 22)}${pad(s.profile, 6)}${pad(s.website, 6)}${pad(s.github, 6)}${pad(s.engagement, 6)}${pad(s.technicalDepth, 6)}${pad(s.price, 6)}${pad(`-${pen}`, 6)}${pad(s.overall, 9)}${s.verdict}`,
+      `  ${pad(name, 22)}${pad(s.profile, 6)}${pad(s.website, 6)}${pad(s.github, 6)}${pad(s.engagement, 6)}${pad(s.technicalDepth, 6)}${pad(s.price, 6)}${pad(s.onchain, 6)}${pad(`-${pen}`, 6)}${pad(s.overall, 9)}${s.verdict}`,
     );
   }
   console.log();

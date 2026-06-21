@@ -2,6 +2,8 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { getXProvider } from "@/lib/providers/x";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
+import { BitqueryProvider } from "@/lib/providers/bitquery";
+import { GmgnProvider } from "@/lib/providers/gmgn";
 import type { AgentContext, Providers } from "@/lib/agents/types";
 import type { CandidateRow } from "@/lib/supabase/types";
 import type { GraphResult } from "@/lib/orchestrator/state";
@@ -17,6 +19,8 @@ export function defaultProviders(): Providers {
     x: getXProvider(),
     github: new GithubProvider(),
     price: new PriceProvider(),
+    bitquery: new BitqueryProvider(),
+    gmgn: new GmgnProvider(),
   };
 }
 

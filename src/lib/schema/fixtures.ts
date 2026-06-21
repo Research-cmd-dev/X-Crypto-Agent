@@ -7,6 +7,7 @@ import type {
   Engagement,
   TechnicalDepth,
   Price,
+  Onchain,
 } from "@/lib/schema/analysis";
 
 type DeepPartial<T> = {
@@ -82,6 +83,16 @@ const basePrice: Price = {
   notes: "No token detected.",
 };
 
+const baseOnchain: Onchain = {
+  holderCount: null,
+  traders24h: null,
+  trades24h: null,
+  firstTradeAt: null,
+  smartMoney: null,
+  source: "none",
+  notes: "No on-chain data.",
+};
+
 /** Build a complete, valid AnalysisReport for tests / the mock dev runner. */
 export function makeReport(overrides: DeepPartial<AnalysisReport> = {}): AnalysisReport {
   return {
@@ -97,6 +108,7 @@ export function makeReport(overrides: DeepPartial<AnalysisReport> = {}): Analysi
     engagement: { ...baseEngagement, ...overrides.engagement },
     technicalDepth: { ...baseTechnicalDepth, ...overrides.technicalDepth },
     price: { ...basePrice, ...overrides.price },
+    onchain: { ...baseOnchain, ...overrides.onchain },
     redFlags: (overrides.redFlags as AnalysisReport["redFlags"]) ?? [],
     summary: overrides.summary ?? "An early-stage project with moderate traction and thin technical depth.",
   };

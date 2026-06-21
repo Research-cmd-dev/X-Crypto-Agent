@@ -1,14 +1,19 @@
 import { z } from "zod";
-import type { AnalysisReport, Price, RedFlag } from "@/lib/schema/analysis";
+import type { AnalysisReport, Price, Onchain, RedFlag } from "@/lib/schema/analysis";
 
-/** Sub-score weights (must sum to 1.0). */
+/**
+ * Sub-score weights (must sum to 1.0). Weighted toward early-stage substance +
+ * traction: on-chain participation and the team/code carry as much as profile.
+ * Tune freely via the scoring loop (W_* env overrides in scripts/score.ts).
+ */
 export const WEIGHTS = {
-  profile: 0.25,
-  website: 0.2,
-  github: 0.2,
+  profile: 0.2,
+  website: 0.1,
+  github: 0.15,
   engagement: 0.15,
   technicalDepth: 0.1,
   price: 0.1,
+  onchain: 0.2,
 } as const;
 
 /**
@@ -82,6 +87,7 @@ export interface ScoreBreakdown {
   engagement: number;
   technicalDepth: number;
   price: number;
+  onchain: number;
   overall: number;
   verdict: Verdict;
 }
@@ -114,6 +120,28 @@ export function priceContextScore(price: Price): number {
   if (liquidity >= 0.03) return 65;
   if (liquidity >= 0.005) return 45;
   return 25; // very thin liquidity — often a warning sign
+}
+
+/**
+ * On-chain traction score (0-100) from holders + 24h active traders + trades —
+ * the strongest *early* signal of a real, live project. No token / no on-chain
+ * data is neutral (50), never penalized.
+ */
+export function onchainScore(o: Onchain): number {
+  if (o.holderCount == null && o.traders24h == null && o.trades24h == null) return 50;
+  let s = 30;
+  const holders = o.holderCount ?? 0;
+  if (holders >= 5000) s += 30;
+  else if (holders >= 1000) s += 22;
+  else if (holders >= 300) s += 14;
+  else if (holders >= 50) s += 7;
+  const traders = o.traders24h ?? 0;
+  if (traders >= 1000) s += 25;
+  else if (traders >= 200) s += 17;
+  else if (traders >= 50) s += 10;
+  else if (traders >= 10) s += 5;
+  if ((o.trades24h ?? 0) >= 100) s += 5; // active market
+  return clampScore(s);
 }
 
 export function redFlagPenalty(
@@ -152,6 +180,7 @@ export function computeScores(
   const engagement = clampScore(report.engagement.momentumScore);
   const technicalDepth = clampScore(report.technicalDepth.score);
   const price = clampScore(priceContextScore(report.price));
+  const onchain = clampScore(onchainScore(report.onchain));
 
   const w = cfg.weights;
   const weighted =
@@ -160,7 +189,8 @@ export function computeScores(
     w.github * github +
     w.engagement * engagement +
     w.technicalDepth * technicalDepth +
-    w.price * price;
+    w.price * price +
+    w.onchain * onchain;
 
   const overall = clampScore(weighted - redFlagPenalty(report.redFlags, cfg));
 
@@ -171,6 +201,7 @@ export function computeScores(
     engagement,
     technicalDepth,
     price,
+    onchain,
     overall,
     verdict: toVerdict(overall, cfg.thresholds),
   };

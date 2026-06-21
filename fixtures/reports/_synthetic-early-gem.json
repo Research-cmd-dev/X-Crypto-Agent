@@ -61,6 +61,15 @@
     "source": "birdeye",
     "notes": "Healthy liquidity."
   },
+  "onchain": {
+    "holderCount": 6200,
+    "traders24h": 1400,
+    "trades24h": 45000,
+    "firstTradeAt": "2026-06-14T20:00:00Z",
+    "smartMoney": "3 smart wallets accumulating",
+    "source": "bitquery",
+    "notes": "Strong post-launch traction."
+  },
   "redFlags": [
     {
       "severity": "high",

@@ -61,6 +61,15 @@
     "source": "dexscreener",
     "notes": "Almost no liquidity."
   },
+  "onchain": {
+    "holderCount": 90,
+    "traders24h": 4,
+    "trades24h": 22,
+    "firstTradeAt": "2026-06-18T00:00:00Z",
+    "smartMoney": null,
+    "source": "bitquery",
+    "notes": "Almost no on-chain activity."
+  },
   "redFlags": [
     {
       "severity": "high",

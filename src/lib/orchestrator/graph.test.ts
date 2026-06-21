@@ -4,11 +4,19 @@ import type { Agent, AgentContext } from "@/lib/agents/types";
 import { MockXProvider } from "@/lib/providers/x";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
+import { BitqueryProvider } from "@/lib/providers/bitquery";
+import { GmgnProvider } from "@/lib/providers/gmgn";
 
 function ctx(): AgentContext {
   return {
     candidate: { id: "c1", handle: "exampledefi", xUserId: "1001", displayName: "ExampleDeFi" },
-    providers: { x: new MockXProvider(), github: new GithubProvider(), price: new PriceProvider() },
+    providers: {
+      x: new MockXProvider(),
+      github: new GithubProvider(),
+      price: new PriceProvider(),
+      bitquery: new BitqueryProvider(),
+      gmgn: new GmgnProvider(),
+    },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
     log: () => {},
@@ -40,6 +48,12 @@ const fakeAgents = (overrides: Partial<GraphAgents> = {}): GraphAgents => ({
     }),
   },
   price: { name: "price-agent", run: async () => ({ price: { token: null, marketCapUsd: null, volume24hUsd: null, priceUsd: null, source: "none", notes: "" } }) },
+  onchain: {
+    name: "onchain-agent",
+    run: async () => ({
+      onchain: { holderCount: 8000, traders24h: 1500, trades24h: 50000, firstTradeAt: null, smartMoney: null, source: "bitquery", notes: "" },
+    }),
+  },
   ...overrides,
 });
 

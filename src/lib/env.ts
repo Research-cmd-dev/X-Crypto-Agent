@@ -13,6 +13,8 @@ const serverSchema = z.object({
 
   GITHUB_TOKEN: z.string().optional(),
   BIRDEYE_API_KEY: z.string().optional(),
+  BITQUERY_API_KEY: z.string().optional(),
+  GMGN_API_KEY: z.string().optional(),
 
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),

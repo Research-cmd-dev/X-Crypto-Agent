@@ -1,12 +1,16 @@
 import type { XProvider, XUser } from "@/lib/providers/x";
 import type { GithubProvider } from "@/lib/providers/github";
 import type { PriceProvider } from "@/lib/providers/price";
+import type { BitqueryProvider } from "@/lib/providers/bitquery";
+import type { GmgnProvider } from "@/lib/providers/gmgn";
 import type { AnalysisReport } from "@/lib/schema/analysis";
 
 export interface Providers {
   x: XProvider;
   github: GithubProvider;
   price: PriceProvider;
+  bitquery: BitqueryProvider;
+  gmgn: GmgnProvider;
 }
 
 export interface CandidateRef {

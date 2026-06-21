@@ -28,7 +28,7 @@ surfaces it in a review dashboard.**
                   └──────────────────────┬──────────────────────────────┘
                                          ▼
    ┌─────────────────── orchestrator (LangGraph-style) ───────────────────┐
-   │  X Analyzer ──▶ ( Website ∥ GitHub ∥ Price ) ──▶ Scorer ──▶ persist   │
+   │  X Analyzer ──▶ ( Website ∥ GitHub ∥ Price ∥ Onchain ) ──▶ Scorer ──▶ persist │
    │  (each node failure-tolerant; partial failures degrade, never abort)  │
    └──────────────────────────────────────────────────────────────────────┘
                                          ▼
@@ -56,9 +56,9 @@ src/
   components/     shadcn UI + table / detail / score / verdict components
   lib/
     schema/       AnalysisReport Zod schema + scoring model
-    providers/    x (API v2 + mock), github (Octokit), price (Birdeye/DexScreener, by contract address)
+    providers/    x (API v2 + mock), github (Octokit), price (Birdeye/DexScreener, by contract address), bitquery + gmgn (on-chain)
     anthropic/    client, structured-output parse, web-tool research loop
-    agents/       x-analyzer, website, github, price, scorer
+    agents/       x-analyzer, website, github, price, onchain, scorer
     orchestrator/ graph (nodes), persist, analyzeCandidate entrypoint
     data/         dashboard data-access
   trigger/        discovery + analyze-candidate jobs
@@ -151,15 +151,17 @@ dashboard as each candidate is analyzed.
 `src/lib/schema/scoring.ts` — deterministic and auditable:
 
 ```
-overall = 0.25·profile + 0.20·website + 0.20·github
-        + 0.15·engagement + 0.10·technicalDepth + 0.10·price
+overall = 0.20·profile + 0.10·website + 0.15·github + 0.15·engagement
+        + 0.10·technicalDepth + 0.10·price + 0.20·onchain
         − redFlagPenalty            (floored at 0)
 
 verdict = overall ≥ 70 → High | ≥ 40 → Monitor | else Avoid
 ```
 
 **Sub-scores** (each 0–100, clamped): `profile` = follower quality, `website`,
-`github`, `engagement` = momentum, `technicalDepth`, `price` = liquidity context.
+`github`, `engagement` = momentum, `technicalDepth`, `price` = liquidity context,
+`onchain` = early traction (holders + 24h active traders/trades, from Bitquery).
+Weights lean toward early-stage substance + on-chain traction.
 
 **Red-flag penalty.** `redFlagPenalty` (per-severity weights high −12 / med −5 /
 low −2) is intentionally **not** a raw sum: flags apply strongest-first with
@@ -191,7 +193,7 @@ V_MONITOR=55 npm run score
 ```
 
 Cached reports live in `fixtures/reports/*.json`. Overrides: weights
-`W_PROFILE W_WEBSITE W_GITHUB W_ENGAGEMENT W_TECH W_PRICE`, penalties
+`W_PROFILE W_WEBSITE W_GITHUB W_ENGAGEMENT W_TECH W_PRICE W_ONCHAIN`, penalties
 `RF_HIGH RF_MED RF_LOW`, `RF_DECAY`, `RF_CAP`, thresholds `V_HIGH V_MONITOR`.
 
 ---

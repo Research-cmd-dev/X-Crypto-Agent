@@ -31,6 +31,7 @@ save(
     engagement: { momentumScore: 60 },
     technicalDepth: { score: 80, notes: "Real, reproducible open-source engine." },
     price: { token: "GEM", marketCapUsd: 7_000_000, volume24hUsd: 4_500_000, priceUsd: 0.007, source: "birdeye", notes: "Healthy liquidity." },
+    onchain: { holderCount: 6200, traders24h: 1400, trades24h: 45_000, firstTradeAt: "2026-06-14T20:00:00Z", smartMoney: "3 smart wallets accumulating", source: "bitquery", notes: "Strong post-launch traction." },
     redFlags: [
       { severity: "high", code: "pump_fun_token", message: "Bio CA ends in 'pump' (pump.fun launch)." },
       { severity: "high", code: "anonymous_team", message: "Pseudonymous solo developer." },
@@ -50,6 +51,7 @@ save(
     engagement: { momentumScore: 18 },
     technicalDepth: { score: 8, notes: "Pure hype, no technical substance." },
     price: { token: "SHELL", marketCapUsd: 30_000_000, volume24hUsd: 5_000, priceUsd: 0.03, source: "dexscreener", notes: "Almost no liquidity." },
+    onchain: { holderCount: 90, traders24h: 4, trades24h: 22, firstTradeAt: "2026-06-18T00:00:00Z", smartMoney: null, source: "bitquery", notes: "Almost no on-chain activity." },
     redFlags: [
       { severity: "high", code: "no_code", message: "No repository or product behind grand AI claims." },
       { severity: "high", code: "fake_partnership", message: "Fabricated partnership with a major lab." },

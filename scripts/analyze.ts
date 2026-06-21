@@ -17,6 +17,8 @@ import path from "node:path";
 import { XApiProvider } from "@/lib/providers/x";
 import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
+import { BitqueryProvider } from "@/lib/providers/bitquery";
+import { GmgnProvider } from "@/lib/providers/gmgn";
 import { runGraph } from "@/lib/orchestrator/graph";
 import type { AgentContext } from "@/lib/agents/types";
 
@@ -55,6 +57,8 @@ async function main() {
       x: new XApiProvider(),
       github: new GithubProvider(),
       price: new PriceProvider(),
+      bitquery: new BitqueryProvider(),
+      gmgn: new GmgnProvider(),
     },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
@@ -72,11 +76,12 @@ async function main() {
   console.log(result.scores);
   console.log("\n=== RED FLAGS ===");
   console.log(result.report.redFlags.length ? result.report.redFlags : "(none)");
-  console.log("\n=== WEBSITE / GITHUB / PRICE ===");
+  console.log("\n=== WEBSITE / GITHUB / PRICE / ONCHAIN ===");
   console.log({
     website: { url: result.report.website.url, detected: result.report.website.detected, score: result.report.website.score },
     github: { url: result.report.github.url, detected: result.report.github.detected, stars: result.report.github.stars, score: result.report.github.score },
     price: result.report.price,
+    onchain: result.report.onchain,
   });
   console.log("\n=== SUMMARY ===");
   console.log(result.report.summary);

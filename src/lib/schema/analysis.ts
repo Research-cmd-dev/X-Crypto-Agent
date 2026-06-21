@@ -108,6 +108,16 @@ export const priceSchema = z.object({
   notes: z.string(),
 });
 
+export const onchainSchema = z.object({
+  holderCount: z.number().nullable().describe("Unique on-chain holders (Bitquery)"),
+  traders24h: z.number().nullable().describe("Unique active traders in the last 24h"),
+  trades24h: z.number().nullable().describe("DEX trade count in the last 24h"),
+  firstTradeAt: z.string().nullable().describe("ISO time of the first on-chain DEX trade (launch)"),
+  smartMoney: z.string().nullable().describe("Smart-money / notable-buyer note (GMGN), or null"),
+  source: z.string(),
+  notes: z.string(),
+});
+
 export const redFlagSeveritySchema = z.enum(["low", "med", "high"]);
 
 export const redFlagSchema = z.object({
@@ -126,6 +136,7 @@ export const analysisReportSchema = z.object({
   engagement: engagementSchema,
   technicalDepth: technicalDepthSchema,
   price: priceSchema,
+  onchain: onchainSchema,
   redFlags: z.array(redFlagSchema).describe("Red flags; [] if none"),
   summary: z.string().describe("2-4 sentence executive summary"),
 });
@@ -139,6 +150,7 @@ export type Developer = z.infer<typeof developerSchema>;
 export type Engagement = z.infer<typeof engagementSchema>;
 export type TechnicalDepth = z.infer<typeof technicalDepthSchema>;
 export type Price = z.infer<typeof priceSchema>;
+export type Onchain = z.infer<typeof onchainSchema>;
 export type RedFlag = z.infer<typeof redFlagSchema>;
 
 // ── Per-agent output schemas (focused → more reliable structured output) ─────
