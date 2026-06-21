@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import { cached } from "@/lib/cache/store";
 
 export interface RepoMetrics {
   owner: string;
@@ -36,8 +37,14 @@ export class GithubProvider {
     this.octokit = new Octokit(token ? { auth: token } : {});
   }
 
-  /** Fetch structured metrics for a single repo. */
+  /** Fetch structured metrics for a single repo (cached 1h). */
   async getRepoMetrics(owner: string, repo: string): Promise<RepoMetrics> {
+    return cached("github:repo", `${owner}/${repo}`.toLowerCase(), 3600, () =>
+      this.fetchRepoMetrics(owner, repo),
+    );
+  }
+
+  private async fetchRepoMetrics(owner: string, repo: string): Promise<RepoMetrics> {
     const { data } = await this.octokit.repos.get({ owner, repo });
 
     const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -71,8 +78,14 @@ export class GithubProvider {
     };
   }
 
-  /** Pick the most relevant (most-starred) repo for an org/owner. */
+  /** Pick the most relevant (most-starred) repo for an org/owner (cached 1h). */
   async getTopRepoForOwner(owner: string): Promise<RepoMetrics | null> {
+    return cached("github:top-repo", owner.toLowerCase(), 3600, () =>
+      this.fetchTopRepoForOwner(owner),
+    );
+  }
+
+  private async fetchTopRepoForOwner(owner: string): Promise<RepoMetrics | null> {
     const { data } = await this.octokit.repos
       .listForUser({ username: owner, sort: "updated", per_page: 100 })
       .catch(() => ({ data: [] as { name: string; stargazers_count: number }[] }));

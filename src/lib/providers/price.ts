@@ -1,3 +1,6 @@
+import { cached } from "@/lib/cache/store";
+import { fetchWithRetry } from "@/lib/util/fetch";
+
 export interface PriceData {
   token: string | null;
   marketCapUsd: number | null;
@@ -37,15 +40,18 @@ export class PriceProvider {
   }
 
   async lookup(query: string): Promise<PriceData> {
-    const cg = await this.tryCoinGecko(query).catch(() => null);
-    if (cg) return cg;
-    const dx = await this.tryDexScreener(query).catch(() => null);
-    if (dx) return dx;
-    return { ...EMPTY };
+    // Cache 5 min — prices move, but discovery/analysis can repeat a query.
+    return cached("price:lookup", query.toLowerCase(), 300, async () => {
+      const cg = await this.tryCoinGecko(query).catch(() => null);
+      if (cg) return cg;
+      const dx = await this.tryDexScreener(query).catch(() => null);
+      if (dx) return dx;
+      return { ...EMPTY };
+    });
   }
 
   private async tryCoinGecko(query: string): Promise<PriceData | null> {
-    const searchRes = await fetch(
+    const searchRes = await fetchWithRetry(
       `${this.cgBase()}/search?query=${encodeURIComponent(query)}`,
       { headers: this.cgHeaders() },
     );
@@ -56,7 +62,7 @@ export class PriceProvider {
     const coin = search.coins?.[0];
     if (!coin) return null;
 
-    const mktRes = await fetch(
+    const mktRes = await fetchWithRetry(
       `${this.cgBase()}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(coin.id)}`,
       { headers: this.cgHeaders() },
     );
@@ -80,7 +86,7 @@ export class PriceProvider {
   }
 
   private async tryDexScreener(query: string): Promise<PriceData | null> {
-    const res = await fetch(
+    const res = await fetchWithRetry(
       `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(query)}`,
     );
     if (!res.ok) return null;
