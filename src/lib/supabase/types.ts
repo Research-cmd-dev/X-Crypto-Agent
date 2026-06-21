@@ -49,6 +49,8 @@ export interface ScoreRow {
   id: string;
   candidate_id: string;
   report_id: string;
+  smart_money: number;
+  earliness: number;
   profile: number;
   website: number;
   github: number;
@@ -74,6 +76,8 @@ export interface LatestCandidateScoreRow {
   candidate_id: string;
   score_id: string;
   report_id: string;
+  smart_money: number;
+  earliness: number;
   profile: number;
   website: number;
   github: number;

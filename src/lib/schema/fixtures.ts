@@ -5,6 +5,7 @@ import type {
   Website,
   GitHub,
   Engagement,
+  SmartMoney,
   TechnicalDepth,
   Price,
 } from "@/lib/schema/analysis";
@@ -62,10 +63,16 @@ const baseGithub: GitHub = {
 
 const baseEngagement: Engagement = {
   momentumScore: 50,
+  engagementRate: 1.2,
   avgLikes: 120,
   avgReposts: 30,
   cadence: "Several posts per day.",
   notes: "Steady but not viral.",
+};
+
+const baseSmartMoney: SmartMoney = {
+  score: 45,
+  notes: "Some credible followers, but no standout smart-money backing yet.",
 };
 
 const baseTechnicalDepth: TechnicalDepth = {
@@ -95,6 +102,7 @@ export function makeReport(overrides: DeepPartial<AnalysisReport> = {}): Analysi
     github: { ...baseGithub, ...overrides.github },
     developers: (overrides.developers as AnalysisReport["developers"]) ?? [],
     engagement: { ...baseEngagement, ...overrides.engagement },
+    smartMoney: { ...baseSmartMoney, ...overrides.smartMoney },
     technicalDepth: { ...baseTechnicalDepth, ...overrides.technicalDepth },
     price: { ...basePrice, ...overrides.price },
     redFlags: (overrides.redFlags as AnalysisReport["redFlags"]) ?? [],

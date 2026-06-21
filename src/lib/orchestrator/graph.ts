@@ -52,11 +52,13 @@ function emptyReport(handle: string): AnalysisReport {
     developers: [],
     engagement: {
       momentumScore: 0,
+      engagementRate: null,
       avgLikes: null,
       avgReposts: null,
       cadence: "n/a",
       notes: "Not analyzed.",
     },
+    smartMoney: { score: 0, notes: "Not analyzed." },
     technicalDepth: { score: 0, notes: "Not analyzed." },
     price: {
       token: null,
@@ -98,6 +100,7 @@ function assemble(handle: string, slices: AgentSlice[]): AnalysisReport {
     if (s.website) report.website = s.website;
     if (s.github) report.github = s.github;
     if (s.engagement) report.engagement = s.engagement;
+    if (s.smartMoney) report.smartMoney = s.smartMoney;
     if (s.technicalDepth) report.technicalDepth = s.technicalDepth;
     if (s.price) report.price = s.price;
     if (s.summary) report.summary = s.summary;

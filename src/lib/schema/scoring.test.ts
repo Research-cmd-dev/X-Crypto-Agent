@@ -5,6 +5,9 @@ import {
   priceContextScore,
   toVerdict,
   redFlagPenalty,
+  earlinessScore,
+  explainScore,
+  ALPHA_WEIGHTS,
 } from "@/lib/schema/scoring";
 import { analysisReportSchema } from "@/lib/schema/analysis";
 import { makeReport } from "@/lib/schema/fixtures";
@@ -56,8 +59,9 @@ describe("redFlagPenalty", () => {
 });
 
 describe("computeScores", () => {
-  it("produces a high verdict for a strong project", () => {
+  it("produces a high verdict for a strong project with smart-money backing", () => {
     const report = makeReport({
+      smartMoney: { score: 90, notes: "" },
       profile: { followerQuality: { score: 90, notes: "" } },
       website: { score: 90 },
       github: { score: 85 },
@@ -88,10 +92,74 @@ describe("computeScores", () => {
 
   it("only ever emits valid sub-scores in [0,100]", () => {
     const s = computeScores(makeReport());
-    for (const k of ["profile", "website", "github", "engagement", "technicalDepth", "price", "overall"] as const) {
+    for (const k of ["smartMoney", "earliness", "profile", "website", "github", "engagement", "technicalDepth", "price", "overall"] as const) {
       expect(s[k]).toBeGreaterThanOrEqual(0);
       expect(s[k]).toBeLessThanOrEqual(100);
     }
+  });
+
+  it("weights smart money highest — it dominates the overall", () => {
+    const withSmart = computeScores(makeReport({ smartMoney: { score: 100, notes: "" } }));
+    const without = computeScores(makeReport({ smartMoney: { score: 0, notes: "" } }));
+    // A full-vs-zero swing on smart money should move the overall by ~28 points.
+    expect(withSmart.overall - without.overall).toBeGreaterThanOrEqual(25);
+  });
+});
+
+describe("ALPHA_WEIGHTS", () => {
+  it("sum to 1.0", () => {
+    const total = Object.values(ALPHA_WEIGHTS).reduce((a, b) => a + b, 0);
+    expect(total).toBeCloseTo(1.0, 9);
+  });
+  it("rank smart money as the single largest weight", () => {
+    const max = Math.max(...Object.values(ALPHA_WEIGHTS));
+    expect(ALPHA_WEIGHTS.smartMoney).toBe(max);
+  });
+});
+
+describe("earlinessScore", () => {
+  it("rewards a small, pre-token, recently-created account over a large mature one", () => {
+    const recent = new Date(Date.now() - 60 * 86_400_000).toISOString(); // ~2 months old
+    const early = earlinessScore(
+      makeReport({
+        account: { createdAt: recent },
+        profile: { followerCount: 8000 },
+        price: { token: null, marketCapUsd: null },
+      }),
+    );
+    const late = earlinessScore(
+      makeReport({
+        account: { createdAt: "2019-01-01" },
+        profile: { followerCount: 2_000_000 },
+        price: { token: "BIG", marketCapUsd: 5_000_000_000 },
+      }),
+    );
+    expect(early).toBeGreaterThan(late);
+    expect(early).toBeGreaterThanOrEqual(80);
+  });
+});
+
+describe("explainScore", () => {
+  it("returns contributions sorted by points with a headline and matching overall", () => {
+    const report = makeReport({ smartMoney: { score: 95, notes: "" } });
+    const ex = explainScore(report);
+    expect(ex.contributions).toHaveLength(8);
+    // Sorted high → low by points.
+    for (let i = 1; i < ex.contributions.length; i++) {
+      expect(ex.contributions[i - 1].points).toBeGreaterThanOrEqual(ex.contributions[i].points);
+    }
+    // Smart money should be the top contributor here.
+    expect(ex.contributions[0].key).toBe("smartMoney");
+    expect(ex.overall).toBe(computeScores(report).overall);
+    expect(ex.headline).toContain(`${ex.overall}`);
+  });
+
+  it("lists red-flag penalties", () => {
+    const report = makeReport({
+      redFlags: [{ severity: "high", code: "anon_team", message: "" }],
+    });
+    const ex = explainScore(report);
+    expect(ex.penalties).toEqual([{ code: "anon_team", severity: "high", points: 15 }]);
   });
 });
 

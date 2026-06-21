@@ -88,10 +88,24 @@ export const developerSchema = z.object({
 
 export const engagementSchema = z.object({
   momentumScore: scoreField("Engagement momentum"),
+  engagementRate: z
+    .number()
+    .nullable()
+    .describe("Avg engagement per post as a % of followers (likes+reposts+replies)/followers*100"),
   avgLikes: z.number().nullable(),
   avgReposts: z.number().nullable(),
   cadence: z.string().describe("Posting cadence assessment"),
   notes: z.string(),
+});
+
+/**
+ * Smart-money signal — the single most important alpha input: is reputable,
+ * high-signal money/talent following or engaging early (before the crowd)?
+ * Backed by `profile.notableFollowers`.
+ */
+export const smartMoneySchema = z.object({
+  score: scoreField("Smart-money signal"),
+  notes: z.string().describe("Who is following/backing early and why it matters for alpha"),
 });
 
 export const technicalDepthSchema = z.object({
@@ -124,6 +138,7 @@ export const analysisReportSchema = z.object({
   github: githubSchema,
   developers: z.array(developerSchema).describe("Associated developer accounts; [] if none"),
   engagement: engagementSchema,
+  smartMoney: smartMoneySchema,
   technicalDepth: technicalDepthSchema,
   price: priceSchema,
   redFlags: z.array(redFlagSchema).describe("Red flags; [] if none"),
@@ -137,6 +152,7 @@ export type Website = z.infer<typeof websiteSchema>;
 export type GitHub = z.infer<typeof githubSchema>;
 export type Developer = z.infer<typeof developerSchema>;
 export type Engagement = z.infer<typeof engagementSchema>;
+export type SmartMoney = z.infer<typeof smartMoneySchema>;
 export type TechnicalDepth = z.infer<typeof technicalDepthSchema>;
 export type Price = z.infer<typeof priceSchema>;
 export type RedFlag = z.infer<typeof redFlagSchema>;
@@ -148,6 +164,7 @@ export const xAnalyzerOutputSchema = z.object({
   account: accountSchema,
   profile: profileSchema,
   engagement: engagementSchema,
+  smartMoney: smartMoneySchema,
   developers: z.array(developerSchema),
   technicalDepth: technicalDepthSchema,
   websiteUrl: z.string().nullable().describe("Best website URL found on the profile/site, or null"),
