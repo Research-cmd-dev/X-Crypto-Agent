@@ -16,7 +16,8 @@
     "seed": "tsx scripts/seed-signal-sources.ts",
     "scout": "tsx scripts/run-orchestrator.ts",
     "backtest": "tsx scripts/backtest-weights.ts",
-    "backfill": "tsx scripts/backfill-historical.ts"
+    "backfill": "tsx scripts/backfill-historical.ts",
+    "onchain-demo": "tsx scripts/onchain-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",

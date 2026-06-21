@@ -26,6 +26,18 @@ export interface PriceSnapshot {
   volume24hUsd: number | null;
 }
 
+/**
+ * A historical-price source for backtesting. Implemented by the CoinGecko
+ * {@link PriceProvider} (CEX-listed / all-chain) and by `BirdeyePriceHistory`
+ * (Solana mints). Lets the backfill pick the right source per token.
+ */
+export interface PriceHistoryProvider {
+  /** Resolve a free-text query (or pass through an address) to a provider id. */
+  resolve(query: string): Promise<string | null>;
+  /** Market snapshot for an id on a past UTC date, or null if unavailable. */
+  historyOn(id: string, date: Date): Promise<PriceSnapshot | null>;
+}
+
 /** Format a date as CoinGecko's `dd-mm-yyyy` (UTC), as required by /coins/{id}/history. */
 export function toCoinGeckoDate(date: Date): string {
   const dd = String(date.getUTCDate()).padStart(2, "0");
@@ -39,7 +51,7 @@ export function toCoinGeckoDate(date: Date): string {
  * symbol), then falls back to DexScreener (by symbol). Returns a neutral empty
  * result if nothing matches — many early projects have no token yet.
  */
-export class PriceProvider {
+export class PriceProvider implements PriceHistoryProvider {
   private readonly cgKey?: string;
 
   constructor(cgKey = process.env.COINGECKO_API_KEY) {
@@ -63,6 +75,11 @@ export class PriceProvider {
       if (dx) return dx;
       return { ...EMPTY };
     });
+  }
+
+  /** {@link PriceHistoryProvider} id resolution — CoinGecko resolves by search. */
+  async resolve(query: string): Promise<string | null> {
+    return this.coinIdFor(query);
   }
 
   /**

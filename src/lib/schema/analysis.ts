@@ -122,6 +122,36 @@ export const priceSchema = z.object({
   notes: z.string(),
 });
 
+/**
+ * On-chain signal block for a Solana (or other chain) token candidate, sourced
+ * from GMGN. Optional on the report: account-only / pre-token candidates omit it,
+ * and `scoring.ts` falls back to the social-derived sub-scores when it is absent.
+ * Fields are nullable because GMGN populates them progressively (rank payload →
+ * per-token security/holders enrichment).
+ */
+export const onchainSchema = z.object({
+  chain: z.string().describe("Chain slug, e.g. 'sol'"),
+  tokenAddress: z.string().describe("Token contract / mint address"),
+  launchpad: z.string().nullable().describe("e.g. pump_fun, raydium, letsbonk"),
+  ageDays: z.number().nullable().describe("Days since launch"),
+  holderCount: z.number().nullable(),
+  smartMoneyCount: z.number().nullable().describe("Tracked smart-money wallets holding (smart_degen_count)"),
+  smartMoneyNetUsd: z.number().nullable().describe("Smart-money net buy USD (buys − sells); negative = distribution"),
+  topHolderConcentration: z.number().nullable().describe("Top-10 holder share, 0..1"),
+  insiderRatio: z.number().nullable().describe("Insider/bundler/sniper share, 0..1"),
+  liquidityUsd: z.number().nullable(),
+  rugRatio: z.number().nullable().describe("GMGN rug risk, 0..1"),
+  isHoneypot: z.boolean().nullable(),
+  renouncedMint: z.boolean().nullable().describe("Mint authority renounced"),
+  renouncedFreeze: z.boolean().nullable().describe("Freeze authority renounced"),
+  lpBurnedOrLocked: z.boolean().nullable(),
+  buyTaxPct: z.number().nullable(),
+  sellTaxPct: z.number().nullable(),
+  priceChange24hPct: z.number().nullable(),
+  holderGrowthPct: z.number().nullable().describe("Recent holder growth %"),
+  notes: z.string(),
+});
+
 export const redFlagSeveritySchema = z.enum(["low", "med", "high"]);
 
 export const redFlagSchema = z.object({
@@ -141,6 +171,7 @@ export const analysisReportSchema = z.object({
   smartMoney: smartMoneySchema,
   technicalDepth: technicalDepthSchema,
   price: priceSchema,
+  onchain: onchainSchema.nullish().describe("On-chain token signals (GMGN); omitted for account-only candidates"),
   redFlags: z.array(redFlagSchema).describe("Red flags; [] if none"),
   summary: z.string().describe("2-4 sentence executive summary"),
 });
@@ -155,6 +186,7 @@ export type Engagement = z.infer<typeof engagementSchema>;
 export type SmartMoney = z.infer<typeof smartMoneySchema>;
 export type TechnicalDepth = z.infer<typeof technicalDepthSchema>;
 export type Price = z.infer<typeof priceSchema>;
+export type OnChain = z.infer<typeof onchainSchema>;
 export type RedFlag = z.infer<typeof redFlagSchema>;
 
 // ── Per-agent output schemas (focused → more reliable structured output) ─────

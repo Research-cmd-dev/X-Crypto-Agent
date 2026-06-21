@@ -105,6 +105,7 @@ export function makeReport(overrides: DeepPartial<AnalysisReport> = {}): Analysi
     smartMoney: { ...baseSmartMoney, ...overrides.smartMoney },
     technicalDepth: { ...baseTechnicalDepth, ...overrides.technicalDepth },
     price: { ...basePrice, ...overrides.price },
+    onchain: (overrides.onchain as AnalysisReport["onchain"]) ?? undefined,
     redFlags: (overrides.redFlags as AnalysisReport["redFlags"]) ?? [],
     summary: overrides.summary ?? "An early-stage project with moderate traction and thin technical depth.",
   };

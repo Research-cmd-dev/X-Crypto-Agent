@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AnalysisReport, Price, RedFlag } from "@/lib/schema/analysis";
+import type { AnalysisReport, Price, OnChain, RedFlag } from "@/lib/schema/analysis";
 
 /**
  * ALPHA scoring profile. Tuned for the thesis: catch low-float early gems that
@@ -143,11 +143,101 @@ function mcapBandScore(mc: number | null): number {
   return 20; // large / late
 }
 
-/** Deterministic earliness score: young-but-established + small-but-real + microcap. */
+// ── On-chain signal scoring (GMGN-sourced Solana token candidates) ──────────
+// These re-source the same weighted signals from on-chain data. They are used
+// in place of the social-derived sub-scores whenever `report.onchain` is set;
+// otherwise the original (account-based) logic above applies.
+
+function tokenAgeScore(ageDays: number | null): number {
+  if (ageDays == null) return 50;
+  if (ageDays < 1) return 55; // brand new — opportunity, but higher rug risk
+  if (ageDays <= 90) return 90; // days-to-weeks: early but survived the initial dump
+  if (ageDays <= 365) return 60;
+  return 35; // old launch — not early
+}
+
+function holderBandScore(holders: number | null): number {
+  if (holders == null) return 50;
+  if (holders < 50) return 45; // too nascent / illiquid
+  if (holders <= 3_000) return 90; // early but real distribution — sweet spot
+  if (holders <= 20_000) return 65;
+  return 45; // already crowded — late
+}
+
+/** Smart-money adoption: how many tracked smart wallets hold + net flow direction. */
+export function onchainSmartMoneyScore(o: OnChain): number {
+  const n = o.smartMoneyCount;
+  let base: number;
+  if (n == null) base = 50;
+  else if (n <= 0) base = 20;
+  else if (n <= 2) base = 50;
+  else if (n <= 5) base = 70;
+  else if (n <= 10) base = 85;
+  else base = 95;
+  if (o.smartMoneyNetUsd != null) base += o.smartMoneyNetUsd > 0 ? 5 : -15; // distribution is bearish
+  return clampScore(base);
+}
+
+/** Momentum from price change + holder growth. */
+export function onchainMomentumScore(o: OnChain): number {
+  const { priceChange24hPct: pc, holderGrowthPct: hg } = o;
+  if (pc == null && hg == null) return 50;
+  let s = 50;
+  if (pc != null) s += Math.max(-25, Math.min(25, pc / 4)); // ±100% → ±25
+  if (hg != null) s += Math.max(-15, Math.min(25, hg / 2));
+  return clampScore(s);
+}
+
+/** Holder quality: penalize top-holder concentration + insider/bundler/sniper dominance. */
+export function onchainHolderQualityScore(o: OnChain): number {
+  let s = 85;
+  if (o.topHolderConcentration != null) s -= o.topHolderConcentration * 80; // 0.5 → −40
+  if (o.insiderRatio != null) s -= o.insiderRatio * 60; // 0.3 → −18
+  return clampScore(s);
+}
+
+/**
+ * Map on-chain security/risk metrics to red flags so they flow through the
+ * existing {@link redFlagPenalty} machinery (no new weight key needed). The
+ * on-chain analyzer merges these into `report.redFlags`.
+ */
+export function securityRedFlags(o: OnChain): RedFlag[] {
+  const flags: RedFlag[] = [];
+  const pct = (x: number) => `${Math.round(x * 100)}%`;
+  if (o.isHoneypot === true)
+    flags.push({ severity: "high", code: "honeypot", message: "Honeypot: sells may be blocked." });
+  if (o.rugRatio != null && o.rugRatio >= 0.5)
+    flags.push({ severity: "high", code: "rug_risk", message: `High rug risk (${pct(o.rugRatio)}).` });
+  else if (o.rugRatio != null && o.rugRatio >= 0.3)
+    flags.push({ severity: "med", code: "rug_risk", message: `Elevated rug risk (${pct(o.rugRatio)}).` });
+  if (o.topHolderConcentration != null && o.topHolderConcentration > 0.5)
+    flags.push({ severity: "med", code: "holder_concentration", message: `Top-10 hold ${pct(o.topHolderConcentration)}.` });
+  if (o.insiderRatio != null && o.insiderRatio > 0.3)
+    flags.push({ severity: "med", code: "insider_heavy", message: `Insider/bundler/sniper share ${pct(o.insiderRatio)}.` });
+  if (o.lpBurnedOrLocked === false)
+    flags.push({ severity: "med", code: "lp_unlocked", message: "Liquidity not burned/locked." });
+  if (o.renouncedMint === false)
+    flags.push({ severity: "low", code: "mint_not_renounced", message: "Mint authority not renounced." });
+  if (o.renouncedFreeze === false)
+    flags.push({ severity: "low", code: "freeze_not_renounced", message: "Freeze authority not renounced." });
+  const tax = Math.max(o.buyTaxPct ?? 0, o.sellTaxPct ?? 0);
+  if (tax > 10) flags.push({ severity: "med", code: "high_tax", message: `High transfer tax (${tax}%).` });
+  return flags;
+}
+
+/**
+ * Deterministic earliness score: young-but-established + small-but-real + microcap.
+ * For on-chain token candidates, uses token age + holder distribution + market cap;
+ * for account candidates, account age + follower band + market cap.
+ */
 export function earlinessScore(report: AnalysisReport): number {
+  const o = report.onchain;
+  const mcap = mcapBandScore(report.price.marketCapUsd);
+  if (o) {
+    return clampScore(0.4 * tokenAgeScore(o.ageDays) + 0.3 * holderBandScore(o.holderCount) + 0.3 * mcap);
+  }
   const age = ageScore(report.account.createdAt);
   const band = followerBandScore(report.profile.followerCount);
-  const mcap = mcapBandScore(report.price.marketCapUsd);
   return clampScore(0.4 * age + 0.3 * band + 0.3 * mcap);
 }
 
@@ -167,13 +257,18 @@ export function toVerdict(
   return "Avoid";
 }
 
-/** Per-signal clamped sub-scores (before weighting). */
+/**
+ * Per-signal clamped sub-scores (before weighting). For on-chain token
+ * candidates (`report.onchain` present) the smart-money / momentum / holder-
+ * quality signals are sourced on-chain; otherwise from the social report.
+ */
 function subScores(report: AnalysisReport): Record<keyof typeof ALPHA_WEIGHTS, number> {
+  const o = report.onchain;
   return {
-    smartMoney: clampScore(report.smartMoney.score),
-    engagement: clampScore(report.engagement.momentumScore),
+    smartMoney: o ? onchainSmartMoneyScore(o) : clampScore(report.smartMoney.score),
+    engagement: o ? onchainMomentumScore(o) : clampScore(report.engagement.momentumScore),
     earliness: earlinessScore(report),
-    profile: clampScore(report.profile.followerQuality.score),
+    profile: o ? onchainHolderQualityScore(o) : clampScore(report.profile.followerQuality.score),
     technicalDepth: clampScore(report.technicalDepth.score),
     website: clampScore(report.website.score),
     github: clampScore(report.github.score),
