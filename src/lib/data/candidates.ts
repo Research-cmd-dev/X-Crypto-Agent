@@ -13,9 +13,17 @@ export interface ListOptions {
   limit?: number;
 }
 
-/** A dashboard row: candidate + latest score + a touch of report data (market cap). */
+/** A dashboard row: candidate + latest score + alpha signals from the report. */
 export interface CandidateListItem extends CandidateWithScore {
   marketCapUsd: number | null;
+  engagementRate: number | null;
+  notableFollowerCount: number;
+}
+
+interface ReportSignals {
+  marketCapUsd: number | null;
+  engagementRate: number | null;
+  notableFollowerCount: number;
 }
 
 /** List candidates joined with their latest score (for the dashboard table). */
@@ -48,9 +56,9 @@ export async function listCandidatesWithScores(
     scoreRows.map((s) => [s.candidate_id, s]),
   );
 
-  // Attach market cap from each candidate's latest report (referenced by the score).
+  // Attach alpha signals from each candidate's latest report (referenced by the score).
   const reportIds = scoreRows.map((s) => s.report_id);
-  const mcapByReport = new Map<string, number | null>();
+  const signalsByReport = new Map<string, ReportSignals>();
   if (reportIds.length > 0) {
     const { data: reports } = await sb
       .from("analysis_reports")
@@ -58,16 +66,23 @@ export async function listCandidatesWithScores(
       .in("id", reportIds);
     for (const r of reports ?? []) {
       const payload = r.payload as AnalysisReport | null;
-      mcapByReport.set(r.id as string, payload?.price?.marketCapUsd ?? null);
+      signalsByReport.set(r.id as string, {
+        marketCapUsd: payload?.price?.marketCapUsd ?? null,
+        engagementRate: payload?.engagement?.engagementRate ?? null,
+        notableFollowerCount: payload?.profile?.notableFollowers?.length ?? 0,
+      });
     }
   }
 
   const merged: CandidateListItem[] = rows.map((c) => {
     const score = scoreByCandidate.get(c.id) ?? null;
+    const sig = score ? signalsByReport.get(score.report_id) : undefined;
     return {
       ...c,
       score,
-      marketCapUsd: score ? (mcapByReport.get(score.report_id) ?? null) : null,
+      marketCapUsd: sig?.marketCapUsd ?? null,
+      engagementRate: sig?.engagementRate ?? null,
+      notableFollowerCount: sig?.notableFollowerCount ?? 0,
     };
   });
 

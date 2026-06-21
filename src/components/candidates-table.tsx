@@ -13,12 +13,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { VerdictBadge } from "@/components/verdict-badge";
 import { ScoreBar } from "@/components/score-bar";
 import type { Verdict } from "@/lib/supabase/types";
 import type { CandidateListItem } from "@/lib/data/candidates";
 
-type Filter = "All" | Verdict;
+type Filter = "All" | "New" | Verdict;
+
+/** "New" = discovered but not yet scored (awaiting a verdict). */
+function isNew(c: CandidateListItem): boolean {
+  return !c.score;
+}
 
 function fmtMoney(n: number | null | undefined): string {
   if (n == null) return "—";
@@ -41,15 +47,19 @@ export function CandidatesTable({ candidates }: { candidates: CandidateListItem[
   const [runMsg, setRunMsg] = React.useState<string | null>(null);
 
   const counts = React.useMemo(() => {
-    const c = { All: candidates.length, High: 0, Monitor: 0, Avoid: 0 };
-    for (const cand of candidates) if (cand.score?.verdict) c[cand.score.verdict]++;
+    const c = { All: candidates.length, New: 0, High: 0, Monitor: 0, Avoid: 0 };
+    for (const cand of candidates) {
+      if (isNew(cand)) c.New++;
+      if (cand.score?.verdict) c[cand.score.verdict]++;
+    }
     return c;
   }, [candidates]);
 
   const rows = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return candidates.filter((c) => {
-      if (filter !== "All" && c.score?.verdict !== filter) return false;
+      if (filter === "New" && !isNew(c)) return false;
+      if (filter !== "All" && filter !== "New" && c.score?.verdict !== filter) return false;
       if (!q) return true;
       return (
         c.handle.toLowerCase().includes(q) ||
@@ -77,7 +87,7 @@ export function CandidatesTable({ candidates }: { candidates: CandidateListItem[
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Tabs value={filter} onValueChange={(v) => setFilter(v as Filter)}>
           <TabsList>
-            {(["All", "High", "Monitor", "Avoid"] as Filter[]).map((f) => (
+            {(["All", "New", "High", "Monitor", "Avoid"] as Filter[]).map((f) => (
               <TabsTrigger key={f} value={f}>
                 {f} <span className="ml-1 text-muted-foreground">({counts[f]})</span>
               </TabsTrigger>
@@ -106,9 +116,9 @@ export function CandidatesTable({ candidates }: { candidates: CandidateListItem[
               <TableHead>Project</TableHead>
               <TableHead className="w-28">Verdict</TableHead>
               <TableHead className="w-56">Score</TableHead>
-              <TableHead className="w-28">Market cap</TableHead>
+              <TableHead className="w-44">Alpha signals</TableHead>
+              <TableHead className="w-24">Market cap</TableHead>
               <TableHead className="w-24">Discovered</TableHead>
-              <TableHead className="w-24">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -139,11 +149,27 @@ export function CandidatesTable({ candidates }: { candidates: CandidateListItem[
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </TableCell>
+                  <TableCell>
+                    {c.score ? (
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant={c.score.smart_money >= 70 ? "success" : "secondary"}>
+                          SM {c.score.smart_money}
+                        </Badge>
+                        {c.engagementRate != null ? (
+                          <Badge variant="secondary">ER {c.engagementRate}%</Badge>
+                        ) : null}
+                        {c.notableFollowerCount > 0 ? (
+                          <Badge variant="secondary">{c.notableFollowerCount}★ notable</Badge>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">{c.status}</span>
+                    )}
+                  </TableCell>
                   <TableCell className="tabular-nums">{fmtMoney(c.marketCapUsd)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {fmtDate(c.discovered_at)}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{c.status}</TableCell>
                 </TableRow>
               ))
             )}
