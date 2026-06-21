@@ -1,5 +1,10 @@
 import type { AnalysisReport, RedFlag } from "@/lib/schema/analysis";
-import { computeScores, type ScoreBreakdown } from "@/lib/schema/scoring";
+import {
+  computeScores,
+  DEFAULT_PROFILE,
+  type ScoreBreakdown,
+  type ScoringProfile,
+} from "@/lib/schema/scoring";
 
 /**
  * Deterministic structural red flags that complement the LLM-surfaced ones.
@@ -48,8 +53,11 @@ export interface ScorerResult {
  * The Scorer: merges structural + LLM red flags, then computes the deterministic
  * weighted score + verdict over the fully-assembled report.
  */
-export function runScorer(report: AnalysisReport): ScorerResult {
+export function runScorer(
+  report: AnalysisReport,
+  profile: ScoringProfile = DEFAULT_PROFILE,
+): ScorerResult {
   const redFlags = mergeRedFlags(report.redFlags, deriveStructuralRedFlags(report));
   const scored: AnalysisReport = { ...report, redFlags };
-  return { scores: computeScores(scored), redFlags };
+  return { scores: computeScores(scored, profile), redFlags };
 }

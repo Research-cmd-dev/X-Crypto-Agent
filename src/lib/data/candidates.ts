@@ -7,6 +7,8 @@ import type {
   Verdict,
 } from "@/lib/supabase/types";
 import type { AnalysisReport } from "@/lib/schema/analysis";
+import type { ScoringProfile } from "@/lib/schema/scoring";
+import { loadProfileById } from "@/lib/scoring/profile";
 
 export interface ListOptions {
   verdict?: Verdict;
@@ -103,6 +105,8 @@ export interface CandidateDetail {
   score: LatestCandidateScoreRow | null;
   flags: FlagRow[];
   reportCreatedAt: string | null;
+  /** The exact profile that produced the stored score (for a drift-free "why"). */
+  scoringProfile: ScoringProfile;
 }
 
 /** Full detail for one candidate: latest report payload + score + flags. */
@@ -137,11 +141,15 @@ export async function getCandidateDetail(
     ? await sb.from("flags").select("*").eq("report_id", reportId)
     : { data: [] as FlagRow[] };
 
+  const scoreRow = (score as LatestCandidateScoreRow | null) ?? null;
+  const scoringProfile = await loadProfileById(scoreRow?.weight_version_id ?? null);
+
   return {
     candidate: candidate as CandidateRow,
     report: (reportRow?.payload as AnalysisReport | undefined) ?? null,
-    score: (score as LatestCandidateScoreRow | null) ?? null,
+    score: scoreRow,
     flags: (flags ?? []) as FlagRow[],
     reportCreatedAt: (reportRow?.created_at as string | undefined) ?? null,
+    scoringProfile,
   };
 }

@@ -9,6 +9,7 @@ import type { GraphResult } from "@/lib/orchestrator/state";
 export async function persistResult(
   candidateId: string,
   result: GraphResult,
+  weightVersionId: string | null = null,
 ): Promise<{ reportId: string }> {
   const sb = supabaseServer();
 
@@ -41,8 +42,29 @@ export async function persistResult(
     price: s.price,
     overall: s.overall,
     verdict: s.verdict,
+    weight_version_id: weightVersionId,
   });
   if (scoreErr) throw new Error(`Failed to insert scores: ${scoreErr.message}`);
+
+  // Seed a forward-return tracking row for projects that already have a token.
+  // The frozen price at scoring time is the entry baseline; the scheduled
+  // `outcomes` job fills in later prices until the horizon matures. Pre-token
+  // candidates get no row (nothing to measure yet).
+  const price = result.report.price;
+  if (price.token) {
+    const { error: outErr } = await sb.from("outcomes").upsert(
+      {
+        candidate_id: candidateId,
+        report_id: reportId,
+        token_ref: price.token,
+        baseline_price_usd: price.priceUsd,
+        baseline_mcap_usd: price.marketCapUsd,
+        baseline_at: new Date().toISOString(),
+      },
+      { onConflict: "report_id" },
+    );
+    if (outErr) throw new Error(`Failed to insert outcome: ${outErr.message}`);
+  }
 
   if (result.report.redFlags.length > 0) {
     const { error: flagErr } = await sb.from("flags").insert(

@@ -112,11 +112,49 @@ create table if not exists scores (
 -- Additive migration for existing databases (no-op on fresh installs).
 alter table scores add column if not exists smart_money integer not null default 0;
 alter table scores add column if not exists earliness integer not null default 0;
+-- weight_version_id is added (with its FK) after weight_versions is defined below.
 
 create index if not exists idx_scores_candidate on scores(candidate_id);
 create index if not exists idx_scores_report on scores(report_id);
 create index if not exists idx_scores_verdict on scores(verdict);
 create index if not exists idx_scores_overall on scores(overall desc);
+
+-- ---- weight_versions -------------------------------------------------------
+-- Versioned, tunable scoring profiles (weights + thresholds + penalties) so
+-- weights can change without a code deploy and be refined by backtesting.
+-- Exactly one row is active at a time (enforced by the partial unique index).
+create table if not exists weight_versions (
+  id          uuid primary key default gen_random_uuid(),
+  label       text not null,
+  profile     jsonb not null,                  -- { weights, thresholds, penalties }
+  active      boolean not null default false,
+  source      text not null default 'manual',  -- 'manual' | 'backtest'
+  metrics     jsonb,                            -- backtest fitness when source='backtest'
+  created_at  timestamptz not null default now()
+);
+
+create unique index if not exists weight_versions_one_active
+  on weight_versions(active) where active;
+
+-- Every score records which profile produced it (drift-free reconstruction).
+alter table scores
+  add column if not exists weight_version_id uuid references weight_versions(id);
+
+-- Seed the built-in baseline profile (mirrors ALPHA_WEIGHTS in src/lib/schema/scoring.ts).
+insert into weight_versions (label, profile, active, source)
+select
+  'baseline',
+  '{
+    "weights": {
+      "smartMoney": 0.28, "engagement": 0.18, "earliness": 0.15, "profile": 0.12,
+      "technicalDepth": 0.10, "website": 0.07, "github": 0.06, "price": 0.04
+    },
+    "thresholds": { "high": 70, "monitor": 40 },
+    "penalties": { "high": 15, "med": 7, "low": 3 }
+  }'::jsonb,
+  true,
+  'manual'
+where not exists (select 1 from weight_versions);
 
 -- ---- flags -----------------------------------------------------------------
 -- Red flags surfaced during analysis.
@@ -143,7 +181,7 @@ select distinct on (s.candidate_id)
   s.report_id,
   s.smart_money, s.earliness,
   s.profile, s.website, s.github, s.engagement, s.technical_depth, s.price,
-  s.overall, s.verdict, s.created_at
+  s.overall, s.verdict, s.created_at, s.weight_version_id
 from scores s
 order by s.candidate_id, s.created_at desc;
 
@@ -159,3 +197,35 @@ create table if not exists provider_cache (
 );
 
 create index if not exists idx_provider_cache_expires on provider_cache(expires_at);
+
+-- ---- outcomes --------------------------------------------------------------
+-- Forward-return tracking: how did a scored, tokened candidate actually perform?
+-- One row per report (seeded at scoring time with the entry-price baseline); the
+-- scheduled `outcomes` job fills in later prices and freezes `forward_return`
+-- once `matured`. This is the ground truth the weight backtester optimizes against.
+create table if not exists outcomes (
+  id                  uuid primary key default gen_random_uuid(),
+  candidate_id        uuid not null references candidates(id) on delete cascade,
+  report_id           uuid not null references analysis_reports(id) on delete cascade,
+  token_ref           text,                         -- identifier used to re-lookup price
+  baseline_price_usd  numeric,
+  baseline_mcap_usd   numeric,
+  baseline_at         timestamptz not null default now(),
+  last_price_usd      numeric,
+  last_mcap_usd       numeric,
+  last_checked_at     timestamptz,
+  forward_return      numeric,                      -- (last / baseline) - 1
+  horizon_days        integer,
+  matured             boolean not null default false,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  unique (report_id)
+);
+
+create index if not exists idx_outcomes_candidate on outcomes(candidate_id);
+create index if not exists idx_outcomes_matured on outcomes(matured);
+
+drop trigger if exists trg_outcomes_updated_at on outcomes;
+create trigger trg_outcomes_updated_at
+  before update on outcomes
+  for each row execute function set_updated_at();

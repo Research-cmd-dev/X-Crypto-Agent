@@ -44,6 +44,42 @@ export const VERDICT_THRESHOLDS = { high: 70, monitor: 40 } as const;
 export const verdictSchema = z.enum(["High", "Monitor", "Avoid"]);
 export type Verdict = z.infer<typeof verdictSchema>;
 
+/**
+ * A tunable scoring profile: the per-signal weights plus the verdict thresholds
+ * and red-flag penalties. Bundling these makes scoring fully parameterizable so
+ * weights can be stored in (and tuned via) the database — `computeScores` and
+ * friends take a profile, defaulting to {@link DEFAULT_PROFILE} (the hardcoded
+ * ALPHA values) so existing call sites and behavior are unchanged.
+ */
+export interface ScoringProfile {
+  weights: Record<keyof typeof ALPHA_WEIGHTS, number>;
+  thresholds: { high: number; monitor: number };
+  penalties: Record<RedFlag["severity"], number>;
+}
+
+/** Zod schema for validating a profile read from JSONB (weight_versions.profile). */
+export const scoringProfileSchema = z.object({
+  weights: z.object({
+    smartMoney: z.number(),
+    engagement: z.number(),
+    earliness: z.number(),
+    profile: z.number(),
+    technicalDepth: z.number(),
+    website: z.number(),
+    github: z.number(),
+    price: z.number(),
+  }),
+  thresholds: z.object({ high: z.number(), monitor: z.number() }),
+  penalties: z.object({ high: z.number(), med: z.number(), low: z.number() }),
+});
+
+/** The built-in profile (current hardcoded ALPHA values). */
+export const DEFAULT_PROFILE: ScoringProfile = {
+  weights: { ...ALPHA_WEIGHTS },
+  thresholds: { ...VERDICT_THRESHOLDS },
+  penalties: { ...RED_FLAG_PENALTY },
+};
+
 export interface ScoreBreakdown {
   smartMoney: number;
   engagement: number;
@@ -115,13 +151,19 @@ export function earlinessScore(report: AnalysisReport): number {
   return clampScore(0.4 * age + 0.3 * band + 0.3 * mcap);
 }
 
-export function redFlagPenalty(flags: RedFlag[]): number {
-  return flags.reduce((sum, f) => sum + (RED_FLAG_PENALTY[f.severity] ?? 0), 0);
+export function redFlagPenalty(
+  flags: RedFlag[],
+  penalties: Record<RedFlag["severity"], number> = RED_FLAG_PENALTY,
+): number {
+  return flags.reduce((sum, f) => sum + (penalties[f.severity] ?? 0), 0);
 }
 
-export function toVerdict(overall: number): Verdict {
-  if (overall >= VERDICT_THRESHOLDS.high) return "High";
-  if (overall >= VERDICT_THRESHOLDS.monitor) return "Monitor";
+export function toVerdict(
+  overall: number,
+  thresholds: { high: number; monitor: number } = VERDICT_THRESHOLDS,
+): Verdict {
+  if (overall >= thresholds.high) return "High";
+  if (overall >= thresholds.monitor) return "Monitor";
   return "Avoid";
 }
 
@@ -143,14 +185,17 @@ function subScores(report: AnalysisReport): Record<keyof typeof ALPHA_WEIGHTS, n
  * Deterministic, auditable scoring: weighted combine of clamped sub-scores
  * (smart money weighted highest) minus red-flag penalties, mapped to a verdict.
  */
-export function computeScores(report: AnalysisReport): ScoreBreakdown {
+export function computeScores(
+  report: AnalysisReport,
+  profile: ScoringProfile = DEFAULT_PROFILE,
+): ScoreBreakdown {
   const s = subScores(report);
-  const weighted = (Object.keys(ALPHA_WEIGHTS) as (keyof typeof ALPHA_WEIGHTS)[]).reduce(
-    (sum, k) => sum + ALPHA_WEIGHTS[k] * s[k],
+  const weighted = (Object.keys(profile.weights) as (keyof typeof ALPHA_WEIGHTS)[]).reduce(
+    (sum, k) => sum + profile.weights[k] * s[k],
     0,
   );
-  const overall = clampScore(weighted - redFlagPenalty(report.redFlags));
-  return { ...s, overall, verdict: toVerdict(overall) };
+  const overall = clampScore(weighted - redFlagPenalty(report.redFlags, profile.penalties));
+  return { ...s, overall, verdict: toVerdict(overall, profile.thresholds) };
 }
 
 // ── "Why this score" explanation ────────────────────────────────────────────
@@ -183,30 +228,33 @@ export interface ScoreExplanation {
  * (sorted high→low) plus red-flag penalties and a one-line headline. Recomputes
  * from the stored report, so it never drifts from the persisted score.
  */
-export function explainScore(report: AnalysisReport): ScoreExplanation {
+export function explainScore(
+  report: AnalysisReport,
+  profile: ScoringProfile = DEFAULT_PROFILE,
+): ScoreExplanation {
   const s = subScores(report);
-  const breakdown = computeScores(report);
+  const breakdown = computeScores(report, profile);
 
   const contributions: ScoreContribution[] = (
-    Object.keys(ALPHA_WEIGHTS) as (keyof typeof ALPHA_WEIGHTS)[]
+    Object.keys(profile.weights) as (keyof typeof ALPHA_WEIGHTS)[]
   )
     .map((key) => ({
       key,
       label: SIGNAL_LABELS[key],
-      weight: ALPHA_WEIGHTS[key],
+      weight: profile.weights[key],
       score: s[key],
-      points: Math.round(ALPHA_WEIGHTS[key] * s[key] * 10) / 10,
+      points: Math.round(profile.weights[key] * s[key] * 10) / 10,
     }))
     .sort((a, b) => b.points - a.points);
 
   const penalties: ScorePenalty[] = report.redFlags.map((f) => ({
     code: f.code,
     severity: f.severity,
-    points: RED_FLAG_PENALTY[f.severity] ?? 0,
+    points: profile.penalties[f.severity] ?? 0,
   }));
 
   const top = contributions.slice(0, 3).map((c) => c.label.toLowerCase());
-  const penaltyTotal = redFlagPenalty(report.redFlags);
+  const penaltyTotal = redFlagPenalty(report.redFlags, profile.penalties);
   const headline =
     `${breakdown.verdict} (${breakdown.overall}/100). ` +
     `Driven by ${top.join(", ")}.` +

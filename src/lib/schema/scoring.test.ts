@@ -8,6 +8,9 @@ import {
   earlinessScore,
   explainScore,
   ALPHA_WEIGHTS,
+  DEFAULT_PROFILE,
+  scoringProfileSchema,
+  type ScoringProfile,
 } from "@/lib/schema/scoring";
 import { analysisReportSchema } from "@/lib/schema/analysis";
 import { makeReport } from "@/lib/schema/fixtures";
@@ -103,6 +106,33 @@ describe("computeScores", () => {
     const without = computeScores(makeReport({ smartMoney: { score: 0, notes: "" } }));
     // A full-vs-zero swing on smart money should move the overall by ~28 points.
     expect(withSmart.overall - without.overall).toBeGreaterThanOrEqual(25);
+  });
+});
+
+describe("scoring profiles", () => {
+  it("DEFAULT_PROFILE is the implicit default (no behavior change)", () => {
+    const r = makeReport({ smartMoney: { score: 80, notes: "" } });
+    expect(computeScores(r)).toEqual(computeScores(r, DEFAULT_PROFILE));
+    expect(scoringProfileSchema.safeParse(DEFAULT_PROFILE).success).toBe(true);
+  });
+
+  it("honors custom weights", () => {
+    const r = makeReport({ website: { score: 100 }, smartMoney: { score: 0, notes: "" } });
+    const allWebsite: ScoringProfile = {
+      weights: {
+        smartMoney: 0,
+        engagement: 0,
+        earliness: 0,
+        profile: 0,
+        technicalDepth: 0,
+        website: 1,
+        github: 0,
+        price: 0,
+      },
+      thresholds: { high: 70, monitor: 40 },
+      penalties: { high: 15, med: 7, low: 3 },
+    };
+    expect(computeScores(r, allWebsite).overall).toBe(100);
   });
 });
 

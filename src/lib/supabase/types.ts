@@ -59,6 +59,7 @@ export interface ScoreRow {
   price: number;
   overall: number;
   verdict: Verdict;
+  weight_version_id: string | null;
   created_at: string;
 }
 
@@ -87,9 +88,38 @@ export interface LatestCandidateScoreRow {
   overall: number;
   verdict: Verdict;
   created_at: string;
+  weight_version_id: string | null;
 }
 
 /** Row that the dashboard list consumes: candidate + its latest score. */
 export interface CandidateWithScore extends CandidateRow {
   score: LatestCandidateScoreRow | null;
+}
+
+export interface WeightVersionRow {
+  id: string;
+  label: string;
+  profile: unknown; // validated ScoringProfile (see lib/schema/scoring.ts)
+  active: boolean;
+  source: "manual" | "backtest";
+  metrics: unknown | null;
+  created_at: string;
+}
+
+export interface OutcomeRow {
+  id: string;
+  candidate_id: string;
+  report_id: string;
+  token_ref: string | null;
+  baseline_price_usd: number | null;
+  baseline_mcap_usd: number | null;
+  baseline_at: string;
+  last_price_usd: number | null;
+  last_mcap_usd: number | null;
+  last_checked_at: string | null;
+  forward_return: number | null;
+  horizon_days: number | null;
+  matured: boolean;
+  created_at: string;
+  updated_at: string;
 }

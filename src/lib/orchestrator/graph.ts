@@ -6,6 +6,7 @@ import { websiteAnalyzerAgent } from "@/lib/agents/website-analyzer";
 import { githubAnalyzerAgent } from "@/lib/agents/github-analyzer";
 import { priceAgent } from "@/lib/agents/price-agent";
 import { runScorer, mergeRedFlags } from "@/lib/agents/scorer";
+import { DEFAULT_PROFILE, type ScoringProfile } from "@/lib/schema/scoring";
 
 /** Neutral baseline report so a degraded run still yields a valid object. */
 function emptyReport(handle: string): AnalysisReport {
@@ -152,6 +153,7 @@ export const DEFAULT_AGENTS: GraphAgents = {
 export async function runGraph(
   ctx: AgentContext,
   agents: GraphAgents = DEFAULT_AGENTS,
+  profile: ScoringProfile = DEFAULT_PROFILE,
 ): Promise<GraphResult> {
   const errors: NodeError[] = [];
 
@@ -173,7 +175,7 @@ export async function runGraph(
     priceSlice,
   ]);
 
-  const { scores, redFlags } = runScorer(report);
+  const { scores, redFlags } = runScorer(report, profile);
   report.redFlags = redFlags;
 
   if (!report.summary) {

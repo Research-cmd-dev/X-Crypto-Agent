@@ -5,8 +5,9 @@ import { PriceProvider } from "@/lib/providers/price";
 import type { AgentContext, Providers } from "@/lib/agents/types";
 import type { CandidateRow } from "@/lib/supabase/types";
 import type { GraphResult } from "@/lib/orchestrator/state";
-import { runGraph } from "@/lib/orchestrator/graph";
+import { runGraph, DEFAULT_AGENTS } from "@/lib/orchestrator/graph";
 import { persistResult } from "@/lib/orchestrator/persist";
+import { loadActiveProfile } from "@/lib/scoring/profile";
 
 export { runGraph } from "@/lib/orchestrator/graph";
 export type { GraphResult, NodeError } from "@/lib/orchestrator/state";
@@ -63,8 +64,9 @@ export async function analyzeCandidate(
   };
 
   try {
-    const result = await runGraph(ctx);
-    await persistResult(candidateId, result);
+    const active = await loadActiveProfile();
+    const result = await runGraph(ctx, DEFAULT_AGENTS, active.profile);
+    await persistResult(candidateId, result, active.id);
     log("analyzed", {
       candidateId,
       overall: result.scores.overall,

@@ -19,7 +19,7 @@ const SEVERITY_VARIANT: Record<FlagSeverity, "destructive" | "warning" | "second
 };
 
 export function ReportDetail({ detail }: { detail: CandidateDetail }) {
-  const { candidate, report, score, flags, reportCreatedAt } = detail;
+  const { candidate, report, score, flags, reportCreatedAt, scoringProfile } = detail;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
@@ -54,7 +54,7 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
       ) : (
         <div className="mt-6 space-y-6">
           {(() => {
-            const ex = explainScore(report);
+            const ex = explainScore(report, scoringProfile);
             return (
               <Card>
                 <CardHeader>
