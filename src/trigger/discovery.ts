@@ -2,6 +2,7 @@ import { task, schedules, logger } from "@trigger.dev/sdk/v3";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getXProvider, type XProvider } from "@/lib/providers/x";
 import { mapLimit } from "@/lib/util/fetch";
+import { extractSolanaToken, reconcileByToken } from "@/lib/discovery/token-link";
 import type { SignalSourceRow } from "@/lib/supabase/types";
 import { analyzeCandidateTask } from "@/trigger/analyze-candidate";
 
@@ -11,6 +12,8 @@ interface DiscoveredCandidate {
   displayName: string | null;
   sourceId: string;
   note: string;
+  /** Solana mint resolved from the account's bio/links (null if none found). */
+  tokenAddress: string | null;
 }
 
 const MENTION_RE = /@([A-Za-z0-9_]{1,15})/g;
@@ -38,6 +41,7 @@ async function discoverFromSource(
           displayName: null,
           sourceId: source.id,
           note: `Matched query "${source.value}": ${t.text.slice(0, 120)}`,
+          tokenAddress: extractSolanaToken(t.text, t.urls),
         });
       }
     }
@@ -65,6 +69,7 @@ async function discoverFromSource(
       displayName: user.name,
       sourceId: source.id,
       note: `Mentioned by @${account.username}`,
+      tokenAddress: extractSolanaToken(user.description, user.urls),
     });
   }
 }
@@ -110,30 +115,66 @@ export async function runDiscovery(x: XProvider = getXProvider()): Promise<{
   const fresh = [...found.values()].filter((c) => !existingIds.has(c.xUserId));
   if (fresh.length === 0) return { scanned: found.size, inserted: 0 };
 
-  const { data: inserted, error: insErr } = await sb
-    .from("candidates")
-    .insert(
-      fresh.map((c) => ({
-        x_user_id: c.xUserId,
-        handle: c.handle,
-        display_name: c.displayName,
-        source_id: c.sourceId,
-        discovery_note: c.note,
-        status: "queued",
-      })),
-    )
-    .select("id");
-  if (insErr) throw new Error(`Failed to insert candidates: ${insErr.message}`);
+  // Reconcile against existing TOKEN candidates: if the migration funnel already
+  // created a row for an account's resolved token, attach the account onto it
+  // instead of inserting a duplicate.
+  const freshTokens = fresh.map((c) => c.tokenAddress).filter((t): t is string => Boolean(t));
+  const existingByToken = new Map<string, string>();
+  if (freshTokens.length > 0) {
+    const { data: tokRows } = await sb
+      .from("candidates")
+      .select("id, token_address")
+      .in("token_address", freshTokens);
+    for (const r of tokRows ?? []) existingByToken.set(r.token_address as string, r.id as string);
+  }
+  const { inserts, merges } = reconcileByToken(fresh, existingByToken);
 
-  const newIds = (inserted ?? []).map((r) => r.id as string);
-  if (newIds.length > 0) {
+  const triggerIds: string[] = [];
+
+  for (const m of merges) {
+    const { error } = await sb
+      .from("candidates")
+      .update({ x_user_id: m.xUserId, handle: m.handle, display_name: m.displayName, status: "queued" })
+      .eq("id", m.id);
+    if (error) {
+      logger.warn("candidate merge failed", { id: m.id, error: error.message });
+      continue;
+    }
+    triggerIds.push(m.id);
+  }
+
+  if (inserts.length > 0) {
+    const { data: inserted, error: insErr } = await sb
+      .from("candidates")
+      .insert(
+        inserts.map((c) => ({
+          x_user_id: c.xUserId,
+          handle: c.handle,
+          display_name: c.displayName,
+          chain: c.tokenAddress ? "sol" : null,
+          token_address: c.tokenAddress,
+          source_id: c.sourceId,
+          discovery_note: c.note,
+          status: "queued",
+        })),
+      )
+      .select("id");
+    if (insErr) throw new Error(`Failed to insert candidates: ${insErr.message}`);
+    for (const r of inserted ?? []) triggerIds.push(r.id as string);
+  }
+
+  if (triggerIds.length > 0) {
     await analyzeCandidateTask.batchTrigger(
-      newIds.map((candidateId) => ({ payload: { candidateId } })),
+      triggerIds.map((candidateId) => ({ payload: { candidateId } })),
     );
   }
 
-  logger.info("discovery complete", { scanned: found.size, inserted: newIds.length });
-  return { scanned: found.size, inserted: newIds.length };
+  logger.info("discovery complete", {
+    scanned: found.size,
+    inserted: inserts.length,
+    merged: merges.length,
+  });
+  return { scanned: found.size, inserted: inserts.length };
 }
 
 /** Manually-triggerable discovery task (used by the dashboard API route). */

@@ -13,7 +13,7 @@ import type {
  *  - DUD: real but thin liquidity, no smart money (Monitor/Avoid).
  */
 const GEM: TokenSummary = {
-  address: "GeMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  address: "GeMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   symbol: "GEM",
   name: "Gem Coin",
   chain: "sol",
@@ -35,7 +35,7 @@ const GEM: TokenSummary = {
 };
 
 const RUG: TokenSummary = {
-  address: "RuGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  address: "RuGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   symbol: "RUG",
   name: "Rug Pull",
   chain: "sol",
@@ -57,7 +57,7 @@ const RUG: TokenSummary = {
 };
 
 const DUD: TokenSummary = {
-  address: "DuDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  address: "DuDxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
   symbol: "DUD",
   name: "Dud Token",
   chain: "sol",
