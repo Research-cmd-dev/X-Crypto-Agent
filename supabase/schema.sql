@@ -219,7 +219,9 @@ create table if not exists outcomes (
   id                  uuid primary key default gen_random_uuid(),
   candidate_id        uuid not null references candidates(id) on delete cascade,
   report_id           uuid not null references analysis_reports(id) on delete cascade,
-  token_ref           text,                         -- identifier used to re-lookup price
+  token_ref           text,                         -- symbol used to re-lookup price (CoinGecko)
+  chain               text,                         -- on-chain tokens: chain slug e.g. 'sol'
+  token_address       text,                         -- on-chain tokens: mint (re-lookup via GMGN)
   baseline_price_usd  numeric,
   baseline_mcap_usd   numeric,
   baseline_at         timestamptz not null default now(),
@@ -239,6 +241,8 @@ create table if not exists outcomes (
 -- Additive migration for existing databases (no-op on fresh installs).
 alter table outcomes add column if not exists dataset text not null default 'live';
 alter table outcomes add column if not exists measured_signals text[];
+alter table outcomes add column if not exists chain text;
+alter table outcomes add column if not exists token_address text;
 
 create index if not exists idx_outcomes_candidate on outcomes(candidate_id);
 create index if not exists idx_outcomes_matured on outcomes(matured);
@@ -248,3 +252,20 @@ drop trigger if exists trg_outcomes_updated_at on outcomes;
 create trigger trg_outcomes_updated_at
   before update on outcomes
   for each row execute function set_updated_at();
+
+-- ---- outcome_snapshots -----------------------------------------------------
+-- Append-only price/volume time series per outcome, written each `outcomes` run.
+-- Two points (baseline + last) live on `outcomes`; this records the full path so
+-- richer labels (peak return, max drawdown, time-to-peak, post-migration rug) can
+-- be derived later without re-fetching history.
+create table if not exists outcome_snapshots (
+  id           uuid primary key default gen_random_uuid(),
+  outcome_id   uuid not null references outcomes(id) on delete cascade,
+  observed_at  timestamptz not null default now(),
+  price_usd    numeric,
+  mcap_usd     numeric,
+  volume_usd   numeric,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists idx_outcome_snapshots_outcome on outcome_snapshots(outcome_id, observed_at);

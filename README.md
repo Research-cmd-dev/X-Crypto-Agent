@@ -188,11 +188,15 @@ verdict = overall ≥ 70 → High | ≥ 40 → Monitor | else Avoid
 
 Weights live in the DB (`weight_versions`, one active row) so they can be tuned
 without a redeploy. Every scored token seeds an `outcomes` row (entry price
-frozen at scoring time); the scheduled `outcomes` job fills in the forward return
-and freezes it after 30 days. `npm run backtest` then measures how well the score
-ranked realized returns (Spearman) and proposes better weights
+frozen at scoring time); the scheduled `outcomes` job re-prices it — routed by
+type: **GMGN by mint for on-chain tokens** (memecoins aren't on CoinGecko by
+symbol), CoinGecko otherwise (`src/lib/scoring/maturation.ts`) — fills in the
+forward return, appends a row to the `outcome_snapshots` price/volume **time
+series**, and freezes the label after 30 days. `npm run backtest` then measures
+how well the score ranked realized returns (Spearman) and proposes better weights
 (`src/lib/scoring/backtest.ts`); `--write` saves an inactive `weight_versions`
-candidate for review.
+candidate for review. (The snapshot series lets richer labels — peak return, max
+drawdown, time-to-peak — be derived later without re-fetching history.)
 
 **Live, full-fidelity labels take ~30 days to mature.** To get history *now*,
 build a **price/fundamentals historical set** from a curated project list:

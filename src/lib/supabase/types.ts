@@ -113,6 +113,8 @@ export interface OutcomeRow {
   candidate_id: string;
   report_id: string;
   token_ref: string | null;
+  chain: string | null;
+  token_address: string | null;
   baseline_price_usd: number | null;
   baseline_mcap_usd: number | null;
   baseline_at: string;
@@ -126,4 +128,14 @@ export interface OutcomeRow {
   measured_signals: string[] | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface OutcomeSnapshotRow {
+  id: string;
+  outcome_id: string;
+  observed_at: string;
+  price_usd: number | null;
+  mcap_usd: number | null;
+  volume_usd: number | null;
+  created_at: string;
 }

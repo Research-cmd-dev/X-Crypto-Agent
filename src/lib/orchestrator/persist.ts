@@ -51,12 +51,17 @@ export async function persistResult(
   // `outcomes` job fills in later prices until the horizon matures. Pre-token
   // candidates get no row (nothing to measure yet).
   const price = result.report.price;
-  if (price.token) {
+  const onchain = result.report.onchain;
+  if (price.token || onchain) {
     const { error: outErr } = await sb.from("outcomes").upsert(
       {
         candidate_id: candidateId,
         report_id: reportId,
         token_ref: price.token,
+        // On-chain tokens carry the mint + chain so maturation re-looks-up the
+        // current price via GMGN/Birdeye (memecoins aren't on CoinGecko by symbol).
+        chain: onchain?.chain ?? null,
+        token_address: onchain?.tokenAddress ?? null,
         baseline_price_usd: price.priceUsd,
         baseline_mcap_usd: price.marketCapUsd,
         baseline_at: new Date().toISOString(),

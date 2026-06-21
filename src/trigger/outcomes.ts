@@ -1,23 +1,29 @@
 import { task, schedules, logger } from "@trigger.dev/sdk/v3";
 import { supabaseServer } from "@/lib/supabase/server";
 import { PriceProvider } from "@/lib/providers/price";
+import { getGmgnProvider } from "@/lib/providers/gmgn";
 import { mapLimit } from "@/lib/util/fetch";
 import { forwardReturn, horizonDays, isMatured } from "@/lib/scoring/outcome";
+import {
+  currentPriceForOutcome,
+  type CurrentPrice,
+  type MaturationSources,
+} from "@/lib/scoring/maturation";
 import type { OutcomeRow } from "@/lib/supabase/types";
 
-/** Minimal price interface so the job is testable with a mock. */
-export interface PriceLookup {
-  lookup(query: string): Promise<{ priceUsd: number | null; marketCapUsd: number | null }>;
+function defaultSources(): MaturationSources {
+  return { coingecko: new PriceProvider(), gmgn: getGmgnProvider() };
 }
 
 /**
  * Refresh forward-return tracking: for every not-yet-matured outcome, re-fetch
- * the token's current price, recompute the return vs. its entry baseline, and
- * freeze it (`matured`) once the horizon is reached. This is the feedback loop
- * that turns past scores into labeled ground truth for backtesting.
+ * the token's current price (routed by type), recompute the return vs. its entry
+ * baseline, append a price/volume snapshot to the time series, and freeze it
+ * (`matured`) once the horizon is reached. This is the feedback loop that turns
+ * past scores into labeled ground truth for backtesting.
  */
 export async function runOutcomes(
-  price: PriceLookup = new PriceProvider(),
+  sources: MaturationSources = defaultSources(),
 ): Promise<{ checked: number; matured: number }> {
   const sb = supabaseServer();
   const { data, error } = await sb.from("outcomes").select("*").eq("matured", false);
@@ -28,13 +34,13 @@ export async function runOutcomes(
 
   let maturedCount = 0;
   await mapLimit(rows, 4, async (row) => {
-    if (!row.token_ref) return;
+    if (!row.token_ref && !row.token_address) return;
 
-    let latest: { priceUsd: number | null; marketCapUsd: number | null };
+    let latest: CurrentPrice;
     try {
-      latest = await price.lookup(row.token_ref);
+      latest = await currentPriceForOutcome(row, sources);
     } catch (e) {
-      logger.warn("outcome price lookup failed", { token: row.token_ref, error: String(e) });
+      logger.warn("outcome price lookup failed", { token: row.token_ref ?? row.token_address, error: String(e) });
       return;
     }
 
@@ -60,6 +66,17 @@ export async function runOutcomes(
       })
       .eq("id", row.id);
     if (updErr) logger.warn("outcome update failed", { id: row.id, error: updErr.message });
+
+    // Append to the price/volume time series (best-effort; only when we got a price).
+    if (latest.priceUsd != null) {
+      const { error: snapErr } = await sb.from("outcome_snapshots").insert({
+        outcome_id: row.id,
+        price_usd: latest.priceUsd,
+        mcap_usd: latest.marketCapUsd,
+        volume_usd: latest.volume24hUsd,
+      });
+      if (snapErr) logger.warn("snapshot insert failed", { id: row.id, error: snapErr.message });
+    }
   });
 
   logger.info("outcomes updated", { checked: rows.length, matured: maturedCount });
