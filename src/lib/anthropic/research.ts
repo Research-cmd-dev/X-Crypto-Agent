@@ -60,7 +60,8 @@ export async function researchText({
   let response = await client.beta.messages.create({
     model: claudeModel(),
     max_tokens: maxTokens,
-    system,
+    // Stable system prompt → cache it to cut cost across candidates.
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
     tools,
     messages,
     betas,

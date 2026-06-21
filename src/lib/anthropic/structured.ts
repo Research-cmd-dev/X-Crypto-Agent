@@ -33,7 +33,8 @@ export async function parseStructured<S extends z.ZodType>({
   const message = await client.beta.messages.parse({
     model: claudeModel(),
     max_tokens: maxTokens,
-    system,
+    // System prompt is stable across candidates → cache it to cut cost.
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: prompt }],
     output_format: betaZodOutputFormat(schema),
     betas: [BETA_STRUCTURED_OUTPUTS],

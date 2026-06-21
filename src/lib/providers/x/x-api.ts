@@ -1,4 +1,6 @@
 import { serverEnv } from "@/lib/env";
+import { fetchWithRetry } from "@/lib/util/fetch";
+import { cached } from "@/lib/cache/store";
 import type {
   XProvider,
   XUser,
@@ -83,9 +85,9 @@ function toTweet(raw: RawTweet, usernameById?: Map<string, string>): XTweet {
 
 /**
  * Thin X API v2 client. Requires X_API_BEARER_TOKEN (a paid X API plan).
- * Hardening (rate-limit backoff, pagination beyond one page, caching) is left
- * as a clearly-marked extension point — this implements the happy path used by
- * discovery + the X analyzer agent.
+ * Requests retry on 429/5xx with backoff (see fetchWithRetry); profile lookups
+ * are cached in Supabase (see cached()). Pagination beyond one page is a
+ * remaining extension point for very high volume.
  */
 export class XApiProvider implements XProvider {
   private readonly token: string;
@@ -97,7 +99,7 @@ export class XApiProvider implements XProvider {
   private async get<T>(path: string, params: Record<string, string>): Promise<T> {
     const url = new URL(`${BASE}${path}`);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       headers: { Authorization: `Bearer ${this.token}` },
     });
     if (!res.ok) {
@@ -107,19 +109,26 @@ export class XApiProvider implements XProvider {
     return (await res.json()) as T;
   }
 
+  // Profile lookups are cached (1h) — discovery resolves the same handles
+  // repeatedly, and these are the calls that hit X's rate limits hardest.
   async getUserByHandle(handle: string): Promise<XUser | null> {
-    const data = await this.get<{ data?: RawUser }>(
-      `/users/by/username/${encodeURIComponent(handle.replace(/^@/, ""))}`,
-      { "user.fields": USER_FIELDS },
-    );
-    return data.data ? toUser(data.data) : null;
+    const h = handle.replace(/^@/, "").toLowerCase();
+    return cached("x:user-by-handle", h, 3600, async () => {
+      const data = await this.get<{ data?: RawUser }>(
+        `/users/by/username/${encodeURIComponent(h)}`,
+        { "user.fields": USER_FIELDS },
+      );
+      return data.data ? toUser(data.data) : null;
+    });
   }
 
   async getUserById(id: string): Promise<XUser | null> {
-    const data = await this.get<{ data?: RawUser }>(`/users/${id}`, {
-      "user.fields": USER_FIELDS,
+    return cached("x:user-by-id", id, 3600, async () => {
+      const data = await this.get<{ data?: RawUser }>(`/users/${id}`, {
+        "user.fields": USER_FIELDS,
+      });
+      return data.data ? toUser(data.data) : null;
     });
-    return data.data ? toUser(data.data) : null;
   }
 
   async getUserTimeline(userId: string, opts?: SearchOptions): Promise<XTweet[]> {

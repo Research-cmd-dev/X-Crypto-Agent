@@ -1,6 +1,7 @@
 import { task, schedules, logger } from "@trigger.dev/sdk/v3";
 import { supabaseServer } from "@/lib/supabase/server";
 import { getXProvider, type XProvider } from "@/lib/providers/x";
+import { mapLimit } from "@/lib/util/fetch";
 import type { SignalSourceRow } from "@/lib/supabase/types";
 import { analyzeCandidateTask } from "@/trigger/analyze-candidate";
 
@@ -50,9 +51,13 @@ async function discoverFromSource(
   const handles = new Set<string>();
   for (const t of tweets) for (const h of parseMentions(t.text)) handles.add(h);
 
-  for (const handle of handles) {
-    if (handle === account.username.toLowerCase()) continue;
-    const user = await x.getUserByHandle(handle).catch(() => null);
+  // Resolve mentioned handles with bounded concurrency (cached + rate-limited).
+  const toResolve = [...handles].filter((h) => h !== account.username.toLowerCase());
+  const users = await mapLimit(toResolve, 4, (handle) =>
+    x.getUserByHandle(handle).catch(() => null),
+  );
+
+  for (const user of users) {
     if (!user || found.has(user.id)) continue;
     found.set(user.id, {
       xUserId: user.id,
