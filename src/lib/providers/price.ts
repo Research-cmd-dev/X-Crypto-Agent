@@ -7,6 +7,17 @@ export interface PriceData {
   notes: string;
 }
 
+/** Richer Birdeye token_overview (includes socials, for migration discovery). */
+export interface TokenOverview {
+  symbol: string | null;
+  priceUsd: number | null;
+  marketCapUsd: number | null;
+  volume24hUsd: number | null;
+  liquidityUsd: number | null;
+  twitter: string | null;
+  website: string | null;
+}
+
 const EMPTY: PriceData = {
   token: null,
   marketCapUsd: null,
@@ -41,7 +52,8 @@ export class PriceProvider {
     return { ...EMPTY };
   }
 
-  private async tryBirdeye(mint: string): Promise<PriceData | null> {
+  /** Full Birdeye token_overview (price, market data, socials). */
+  async tokenOverview(mint: string): Promise<TokenOverview | null> {
     if (!this.birdeyeKey) return null;
     const res = await fetch(
       `https://public-api.birdeye.so/defi/token_overview?address=${encodeURIComponent(mint)}`,
@@ -57,15 +69,30 @@ export class PriceProvider {
         mc?: number;
         v24hUSD?: number;
         liquidity?: number;
+        extensions?: { twitter?: string; website?: string };
       };
     };
     const d = body.data;
     if (!body.success || !d) return null;
     return {
-      token: d.symbol ?? null,
+      symbol: d.symbol ?? null,
+      priceUsd: d.price ?? null,
       marketCapUsd: d.marketCap ?? d.mc ?? null,
       volume24hUsd: d.v24hUSD ?? null,
-      priceUsd: d.price ?? null,
+      liquidityUsd: d.liquidity ?? null,
+      twitter: d.extensions?.twitter ?? null,
+      website: d.extensions?.website ?? null,
+    };
+  }
+
+  private async tryBirdeye(mint: string): Promise<PriceData | null> {
+    const o = await this.tokenOverview(mint);
+    if (!o || (o.priceUsd == null && o.marketCapUsd == null)) return null;
+    return {
+      token: o.symbol,
+      marketCapUsd: o.marketCapUsd,
+      volume24hUsd: o.volume24hUsd,
+      priceUsd: o.priceUsd,
       source: "birdeye",
       notes: `Birdeye token_overview for ${short(mint)}.`,
     };

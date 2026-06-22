@@ -66,6 +66,15 @@ export function githubOwnerFromUrl(url: string | null | undefined): string | nul
   }
 }
 
+/** The handle from an x.com / twitter.com profile URL (e.g. a token's social link). */
+export function handleFromXUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(/(?:x\.com|twitter\.com)\/(?:#!\/)?@?([A-Za-z0-9_]{1,15})(?:[/?]|$)/i);
+  if (!m) return null;
+  const handle = m[1];
+  return /^(i|intent|home|share|hashtag|search|explore|messages)$/i.test(handle) ? null : handle;
+}
+
 /** Distinct @mentions in post text (developer / collaborator candidates). */
 export function extractMentions(text: string | null | undefined, limit = 12): string[] {
   if (!text) return [];
