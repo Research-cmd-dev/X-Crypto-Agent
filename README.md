@@ -198,6 +198,24 @@ Cached reports live in `fixtures/reports/*.json`. Overrides: weights
 
 ---
 
+## Discovery & analysis from the CLI
+
+The whole pipeline runs standalone (no Supabase / Trigger.dev):
+
+| Command | What it does |
+|---|---|
+| `npm run scan [-- "<query>"]` | Scan X recent-search for fresh project accounts; rank by early-stage signal |
+| `npm run migrations [-- <hours>]` | pump.fun graduations (on-chain), enriched with holders/traders + the token's Twitter |
+| `npm run discover [-- --hours N]` | **Combine both vectors** (see below) |
+| `npm run analyze -- <handle\|url>` | Deep multi-agent + on-chain research on one account |
+| `npm run score` | Re-score cached reports instantly (calibration loop) |
+
+`discover` joins the two searches on the **X-handle ↔ contract-address** link: an X
+hit's bio yields its contract address (→ on-chain traction), and a migrated token's
+metadata yields its X handle (→ social profile). Every candidate then carries *both*
+dimensions. Those strong on both rank highest (🔗 confirmed by both searches); on-chain
+traction with little social presence is flagged (⚠) as a likely bot/pump.
+
 ## Testing & verification
 
 ```bash

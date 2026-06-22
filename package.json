@@ -18,6 +18,7 @@
     "scout": "tsx scripts/run-orchestrator.ts",
     "scan": "tsx scripts/scan.ts",
     "migrations": "tsx scripts/migrations.ts",
+    "discover": "tsx scripts/discover.ts",
     "analyze": "tsx scripts/analyze.ts",
     "score": "tsx scripts/score.ts"
   },
