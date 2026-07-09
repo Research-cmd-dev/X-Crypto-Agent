@@ -21,6 +21,7 @@
     "migrations": "tsx scripts/migrations.ts",
     "rank-launches": "tsx scripts/rank-launches.ts",
     "backfill-outcomes": "tsx scripts/backfill-outcomes.ts",
+    "calibrate-launches": "tsx scripts/calibrate-launches.ts",
     "check-env": "tsx scripts/check-env.ts",
     "discover": "tsx scripts/discover.ts",
     "analyze": "tsx scripts/analyze.ts",

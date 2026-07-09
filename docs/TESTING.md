@@ -2,6 +2,17 @@
 
 **Goal**: Know the current state instantly and iterate on the system (discovery, agents, prompts, scoring) as fast and cheaply as possible.
 
+### Launch probability feedback loop (pump.fun)
+
+| Step | Command | Keys? |
+|------|---------|-------|
+| Rank graduates | `npm run rank-launches` | ST |
+| Label history | `npm run backfill-outcomes -- 72 --save` | ST + Birdeye |
+| Retune weights | `npm run calibrate-launches -- --write` | **none** (uses JSONL or synthetic) |
+| Apply | Review `fixtures/outcomes/best-config.json` → edit `DEFAULT_LAUNCH_SCORE` | — |
+
+`calibrate-launches` always works offline with synthetic data so you can verify the loop before keys arrive.
+
 The system was deliberately built with a **fast calibration loop** in mind: expensive LLM research is cached once; everything downstream (scoring, structural flags, assembly) is deterministic and sweepable in <1s with zero extra cost.
 
 ---

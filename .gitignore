@@ -38,3 +38,6 @@ coverage
 
 # runtime discovery watchlist
 fixtures/watchlist.json
+
+# outcome calibration outputs (regenerate with backfill/calibrate)
+fixtures/outcomes/

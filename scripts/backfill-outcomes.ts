@@ -106,6 +106,8 @@ async function main() {
     mint: string;
     symbol: string | null;
     graduatedAt: string | null;
+    /** Full T0 feature pack — required for offline re-scoring / calibrate-launches. */
+    features: (typeof features)[0];
     launchScore: number;
     vetoed: boolean;
     outcome: LaunchOutcome;
@@ -141,6 +143,7 @@ async function main() {
       mint: f.mint,
       symbol: seed.symbol ?? null,
       graduatedAt: seed.graduatedAt ?? null,
+      features: f,
       launchScore: scored.score,
       vetoed: scored.vetoed,
       outcome,

@@ -213,8 +213,16 @@ The whole pipeline runs standalone (no Supabase / Trigger.dev):
 | `npm run scan [-- "<query>"]` | Scan X recent-search for fresh project accounts; rank by early-stage signal |
 | `npm run migrations [-- <hours>]` | pump.fun graduations ranked by **launchScore** (no LLM) |
 | `npm run rank-launches [-- <hours>]` | Same funnel as production: feature pack → score → top-K shortlist |
-| `npm run backfill-outcomes [-- <hours>] [--save]` | Historical prices (Birdeye) → 1h/6h/24h labels; calibrate launchScore |
+| `npm run backfill-outcomes [-- <hours>] [--save]` | Historical prices (Birdeye) → 1h/6h/24h labels → JSONL |
+| `npm run calibrate-launches [-- --write]` | **Use outcomes:** metrics + weight grid search (offline; synthetic if no JSONL) |
 | `npm run check-env` | Which API keys are set (redacted) + capability matrix |
+
+**Feedback loop (how historical data improves the ranker):**
+
+1. `rank-launches` / discovery — score graduates at T0  
+2. `backfill-outcomes --save` — attach 24h returns (needs ST + Birdeye)  
+3. `calibrate-launches` — measure precision@K / lift; search better weights  
+4. Review `fixtures/outcomes/best-config.json` → update `DEFAULT_LAUNCH_SCORE` when real data says so  
 | `npm run watch-migrations` | Real-time WS watcher for graduated tokens (Solana Tracker Datastream) |
 | `npm run watch-gmgn` | Real-time WS watcher for GMGN new pools, launches, smart money trades |
 | `npm run discover [-- --hours N]` | **Combine both vectors** (see below) |
