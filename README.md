@@ -211,12 +211,22 @@ The whole pipeline runs standalone (no Supabase / Trigger.dev):
 | Command | What it does |
 |---|---|
 | `npm run scan [-- "<query>"]` | Scan X recent-search for fresh project accounts; rank by early-stage signal |
-| `npm run migrations [-- <hours>]` | pump.fun graduations (on-chain), enriched with holders/traders + the token's Twitter |
+| `npm run migrations [-- <hours>]` | pump.fun graduations ranked by **launchScore** (no LLM) |
+| `npm run rank-launches [-- <hours>]` | Same funnel as production: feature pack → score → top-K shortlist |
 | `npm run watch-migrations` | Real-time WS watcher for graduated tokens (Solana Tracker Datastream) |
 | `npm run watch-gmgn` | Real-time WS watcher for GMGN new pools, launches, smart money trades |
 | `npm run discover [-- --hours N]` | **Combine both vectors** (see below) |
-| `npm run analyze -- <handle\|url>` | Deep multi-agent + on-chain research on one account |
+| `npm run analyze -- <handle\|url>` | Deep multi-agent research — use only on launchScore shortlist |
 | `npm run score` | Re-score cached reports instantly (calibration loop) |
+
+**Launch probability funnel** (primary mission — pump.fun graduates):
+
+1. Ingest graduations (Solana Tracker; Bitquery fallback).
+2. Cheap feature pack: holders/liq/mcap/volume (+ optional GMGN risk/smart-money).
+3. Deterministic `computeLaunchScore` in `src/lib/schema/launch-score.ts` (vetoes + 0–100 rank).
+4. Only **top-K** survivors get full multi-agent analysis (cost control).
+
+GMGN is optional enrichment — swap or omit without breaking the scorer. Primary path is ST + price feeds.
 
 `discover` joins the two searches on the **X-handle ↔ contract-address** link: an X
 hit's bio yields its contract address (→ on-chain traction), and a migrated token's

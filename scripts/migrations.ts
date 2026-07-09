@@ -1,146 +1,123 @@
 /**
- * Today's pump.fun migrations (graduations) — tokens that completed the bonding
- * curve and migrated to the AMM, a strong early signal (real buy pressure pushed
- * them past the cap). Prefers Solana Tracker; falls back to Bitquery. Enriches
- * with holders + market data + Twitter, ranks by market cap. No Supabase.
+ * Today's pump.fun migrations (graduations), enriched and ranked by launchScore
+ * (on-chain-first probability heuristic — no LLM).
  *
  *   npm run migrations            # today (UTC)
  *   npm run migrations -- 48      # last 48 hours
+ *   npm run migrations -- 6 --no-gmgn
  *
  * Requires SOLANATRACKER_API_KEY (preferred) or BITQUERY_API_KEY.
- * Optional: BIRDEYE_API_KEY for market data. Pipe a hit with a Twitter into the
- * full swarm:  npm run analyze -- <handle>
+ * Optional: BIRDEYE_API_KEY, GMGN_API_KEY (safety/smart-money boost only).
+ *
+ * For a dedicated shortlist view: npm run rank-launches
+ * Deep dive: npm run analyze -- <handle>
  */
 import { BitqueryProvider } from "@/lib/providers/bitquery";
 import { SolanaTrackerProvider } from "@/lib/providers/solanatracker";
-import { PriceProvider } from "@/lib/providers/price";
+import {
+  collectLaunchFeaturesBatch,
+  type SeedGraduation,
+} from "@/lib/discovery/launch-features";
+import { rankLaunches, selectTopKForDeepDive } from "@/lib/schema/launch-score";
 import { handleFromXUrl } from "@/lib/extract";
 
-const ENRICH_CAP = 18;
-
-interface Row {
-  mint: string;
-  migratedAt: string;
-  symbol: string | null;
-  marketCapUsd: number | null;
-  volume24hUsd: number | null;
-  holders: number | null;
-  traders24h: number | null;
-  twitter: string | null;
-}
-
-async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let i = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (i < items.length) {
-        const idx = i++;
-        out[idx] = await fn(items[idx]);
-      }
-    }),
-  );
-  return out;
-}
+const ENRICH_CAP = 24;
 
 const pad = (s: string | number, n: number) => String(s).padEnd(n);
 const usd = (n: number | null) =>
-  n == null ? "?" : n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}k` : `$${n.toFixed(0)}`;
-const hhmm = (iso: string) => (iso ? iso.slice(11, 16) : "??:??");
+  n == null
+    ? "?"
+    : n >= 1e6
+      ? `$${(n / 1e6).toFixed(1)}M`
+      : n >= 1e3
+        ? `$${(n / 1e3).toFixed(0)}k`
+        : `$${n.toFixed(0)}`;
+const hhmm = (iso: string | null) => (iso ? iso.slice(11, 16) : "??:??");
 
 async function main() {
+  const args = process.argv.slice(2);
   const useTracker = !!process.env.SOLANATRACKER_API_KEY;
   if (!useTracker && !process.env.BITQUERY_API_KEY) {
     console.error("Set SOLANATRACKER_API_KEY (preferred) or BITQUERY_API_KEY for migrations.");
     process.exit(1);
   }
-  const hours = Number(process.argv.slice(2).find((a) => /^\d+$/.test(a)) ?? "");
+  const hours = Number(args.find((a) => /^\d+$/.test(a)) ?? "");
+  const skipGmgn = args.includes("--no-gmgn");
   const since = new Date();
   if (Number.isFinite(hours) && hours > 0) since.setTime(Date.now() - hours * 3_600_000);
-  else since.setUTCHours(0, 0, 0, 0); // start of today UTC
+  else since.setUTCHours(0, 0, 0, 0);
   const sinceISO = since.toISOString();
 
-  const price = new PriceProvider();
-  let rowsData: any[] = [];
+  console.log(
+    `\n🎓 pump.fun migrations since ${sinceISO} … ranking by launchScore` +
+      (useTracker ? " (Solana Tracker)" : " (Bitquery)"),
+  );
+
+  let seeds: SeedGraduation[] = [];
   let total = 0;
 
-  console.log(`\n🎓 pump.fun migrations since ${sinceISO} … (using ${useTracker ? "Solana Tracker" : "Bitquery"})`);
   if (useTracker) {
     const st = new SolanaTrackerProvider();
     const { graduations, total: t } = await st.recentGraduations(sinceISO, 60);
     total = t || graduations.length;
-    rowsData = graduations.map((g: any) => ({
+    seeds = graduations.map((g) => ({
       mint: g.mint,
-      migratedAt: g.graduatedAt || sinceISO,
+      graduatedAt: g.graduatedAt || sinceISO,
       symbol: g.symbol,
+      twitter: g.twitter,
       marketCapUsd: g.marketCapUsd,
       liquidityUsd: g.liquidityUsd,
-      twitter: g.twitter,
     }));
   } else {
     const bq = new BitqueryProvider();
     const { migrations, total: t } = await bq.recentMigrations(sinceISO, 60);
     total = t;
-    if (migrations.length === 0) {
-      console.log("No migrations found in the window (or the migrate query returned nothing).");
-      return;
-    }
-    // enrich with tracker? for now use bitquery style, but since no key assume empty
-    rowsData = migrations;
+    seeds = (migrations ?? []).map((m: { mint: string; migratedAt?: string; holders?: number; traders24h?: number; symbol?: string; twitter?: string; marketCapUsd?: number }) => ({
+      mint: m.mint,
+      graduatedAt: m.migratedAt,
+      symbol: m.symbol ?? null,
+      twitter: m.twitter ?? null,
+      holders: m.holders ?? null,
+      traders24h: m.traders24h ?? null,
+      marketCapUsd: m.marketCapUsd ?? null,
+    }));
   }
-  if (rowsData.length === 0) {
+
+  if (seeds.length === 0) {
     console.log("No migrations found in the window.");
     return;
   }
-  console.log(`${total} token(s) migrated. Enriching the ${Math.min(ENRICH_CAP, rowsData.length)} most recent…\n`);
+  console.log(`${total} token(s) migrated. Enriching ${Math.min(ENRICH_CAP, seeds.length)} for launchScore…\n`);
 
-  const rows: Row[] = await mapLimit(rowsData.slice(0, ENRICH_CAP), 5, async (m: any) => {
-    let meta: any = null, oc: any = null, ov: any = null;
-    if (useTracker) {
-      const st = new SolanaTrackerProvider();
-      const info = await st.tokenInfo(m.mint).catch(() => null);
-      if (info) {
-        meta = { symbol: info.symbol, twitter: info.twitter ? "https://x.com/" + info.twitter : null };
-      }
-      const h = await st.tokenHolders(m.mint).catch(() => null);
-      if (h) oc = { holderCount: h.total };
-    } else {
-      const bq = new BitqueryProvider();
-      [meta, oc, ov] = await Promise.all([
-        bq.tokenMetadata(m.mint).catch(() => null),
-        bq.tokenOnchain(m.mint).catch(() => null),
-        price.tokenOverview(m.mint).catch(() => null),
-      ]);
-    }
-    const ov2 = useTracker ? null : ov; // for non tracker
-    return {
-      mint: m.mint,
-      migratedAt: m.migratedAt,
-      symbol: meta?.symbol ?? (m.symbol) ?? ov2?.symbol ?? null,
-      marketCapUsd: m.marketCapUsd ?? ov2?.marketCapUsd ?? null,
-      volume24hUsd: ov2?.volume24hUsd ?? null,
-      holders: oc?.holderCount ?? m.holders ?? null,
-      traders24h: null, // can extend
-      twitter: handleFromXUrl(meta?.twitter ?? m.twitter),
-    };
+  const features = await collectLaunchFeaturesBatch(seeds.slice(0, ENRICH_CAP), 5, {
+    skipGmgn,
   });
-
-  rows.sort((a, b) => (b.marketCapUsd ?? -1) - (a.marketCapUsd ?? -1));
+  const ranked = rankLaunches(features);
+  const deep = selectTopKForDeepDive(features);
 
   console.log(
-    `  ${pad("time", 6)}${pad("symbol", 10)}${pad("mcap", 8)}${pad("vol24h", 9)}${pad("holders", 9)}${pad("trd24h", 8)}${pad("twitter", 18)}mint`,
+    `  ${pad("sc", 5)}${pad("time", 6)}${pad("hold", 8)}${pad("mcap", 8)}${pad("liq", 8)}${pad("sm", 4)}${pad("tw", 4)}${pad("mint", 14)}reasons`,
   );
-  console.log(`  ${"-".repeat(92)}`);
-  for (const r of rows) {
+  console.log(`  ${"-".repeat(96)}`);
+  for (const r of ranked) {
+    const sc = r.result.vetoed ? "VETO" : String(r.result.score);
+    const reasons = r.result.vetoed
+      ? r.result.vetoReasons.join(",")
+      : r.result.reasons.slice(0, 3).join(" · ");
     console.log(
-      `  ${pad(hhmm(r.migratedAt), 6)}${pad(r.symbol ?? "?", 10)}${pad(usd(r.marketCapUsd), 8)}${pad(usd(r.volume24hUsd), 9)}${pad(r.holders?.toLocaleString() ?? "?", 9)}${pad(r.traders24h?.toLocaleString() ?? "?", 8)}${pad(r.twitter ? "@" + r.twitter : "-", 18)}${r.mint.slice(0, 6)}…${r.mint.slice(-4)}`,
+      `  ${pad(sc, 5)}${pad(hhmm(r.graduatedAt), 6)}${pad(r.holders?.toLocaleString() ?? "?", 8)}${pad(usd(r.marketCapUsd), 8)}${pad(usd(r.liquidityUsd), 8)}${pad(r.smartMoneyCount ?? "?", 4)}${pad(r.hasTwitter ? "Y" : "-", 4)}${pad(r.mint.slice(0, 6) + "…" + r.mint.slice(-4), 14)}${reasons}`,
     );
   }
 
-  const analyzable = rows.filter((r) => r.twitter);
-  console.log(`\n${analyzable.length} of the enriched migrations expose a Twitter (analyzable).`);
-  if (analyzable.length) {
-    console.log(`Run the full swarm on the biggest:  npm run analyze -- ${analyzable[0].twitter}`);
+  console.log(`\n✅ Shortlist for deep analysis (${deep.length}):`);
+  for (const d of deep) {
+    const seed = seeds.find((s) => s.mint === d.mint);
+    const twRaw = seed?.twitter;
+    const tw = twRaw ? handleFromXUrl(twRaw) ?? twRaw.replace(/^@/, "") : null;
+    console.log(
+      `  score=${d.result.score}  ${d.mint}` +
+        (tw ? `  → npm run analyze -- ${tw}` : ""),
+    );
   }
   console.log();
 }

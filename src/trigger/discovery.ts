@@ -7,11 +7,17 @@ import type { SignalSourceRow } from "@/lib/supabase/types";
 import { analyzeCandidateTask } from "@/trigger/analyze-candidate";
 import { scanSignalSources } from "@/lib/discovery/scan";
 import { handleFromXUrl } from "@/lib/extract";
+import {
+  collectLaunchFeaturesBatch,
+  type SeedGraduation,
+} from "@/lib/discovery/launch-features";
+import {
+  selectTopKForDeepDive,
+  DEFAULT_LAUNCH_SCORE,
+} from "@/lib/schema/launch-score";
 
-/** Cap how many migrations we enrich per run (cost + rate limits). */
+/** Cap how many migrations we enrich per run (feature pack, no LLM). */
 const MIGRATION_ENRICH_CAP = 30;
-/** Min holders to queue full analysis without a Twitter handle. */
-const MIN_HOLDERS_NO_TWITTER = 20;
 /** Soft floor: skip dust if mcap and liq both present and both tiny. */
 const MIN_MCAP_USD = 5_000;
 const MIN_LIQ_USD = 1_000;
@@ -105,8 +111,8 @@ interface MigrationHit {
 }
 
 /**
- * Discover recent pump.fun migrations and turn them into candidates (token-first).
- * Prefers Solana Tracker (same source as CLI `npm run migrations`); falls back to Bitquery.
+ * Discover recent pump.fun migrations, score them with launchScore (no LLM),
+ * and only insert + deep-analyze the top-K survivors.
  */
 export async function runMigrationDiscovery(hours = 1): Promise<{ scanned: number; inserted: number }> {
   const sb = supabaseServer();
@@ -124,63 +130,61 @@ export async function runMigrationDiscovery(hours = 1): Promise<{ scanned: numbe
     return true;
   });
 
-  // Enrich a capped batch with holders (ST) so the cost gate is real numbers, not zeros.
-  const st = process.env.SOLANATRACKER_API_KEY ? new SolanaTrackerProvider() : null;
-  const toEnrich = marketOk.slice(0, MIGRATION_ENRICH_CAP);
-  const enriched: MigrationHit[] = await Promise.all(
-    toEnrich.map(async (h) => {
-      let holders = h.holders ?? null;
-      let twitter = h.twitter ?? null;
-      let symbol = h.symbol ?? null;
-      if (st) {
-        const [holderInfo, info] = await Promise.all([
-          st.tokenHolders(h.mint).catch(() => null),
-          !twitter || !symbol ? st.tokenInfo(h.mint).catch(() => null) : Promise.resolve(null),
-        ]);
-        if (holderInfo?.total != null) holders = holderInfo.total;
-        if (info?.twitter && !twitter) twitter = info.twitter;
-        if (info?.symbol && !symbol) symbol = info.symbol;
-      }
-      return { ...h, holders, twitter, symbol };
-    }),
-  );
+  const seeds: SeedGraduation[] = marketOk.slice(0, MIGRATION_ENRICH_CAP).map((h) => ({
+    mint: h.mint,
+    graduatedAt: h.migratedAt,
+    symbol: h.symbol,
+    twitter: h.twitter,
+    marketCapUsd: h.marketCapUsd,
+    liquidityUsd: h.liquidityUsd,
+    holders: h.holders,
+    traders24h: h.traders24h,
+  }));
 
+  // Feature pack: ST/price primary; GMGN optional (skipped if no key).
+  const features = await collectLaunchFeaturesBatch(seeds, 5);
+  const shortlist = selectTopKForDeepDive(features, DEFAULT_LAUNCH_SCORE);
+
+  logger.info("migration launchScore funnel", {
+    scanned: hits.length,
+    marketOk: marketOk.length,
+    enriched: features.length,
+    shortlist: shortlist.length,
+    topScores: shortlist.map((s) => ({ mint: s.mint.slice(0, 8), score: s.result.score })),
+    topK: DEFAULT_LAUNCH_SCORE.topK,
+    minScore: DEFAULT_LAUNCH_SCORE.minScoreForDeepDive,
+  });
+
+  if (shortlist.length === 0) {
+    return { scanned: hits.length, inserted: 0 };
+  }
+
+  const hitByMint = new Map(hits.map((h) => [h.mint, h]));
   const candidatesToInsert: Array<Record<string, unknown>> = [];
 
-  for (const m of enriched) {
-    const mint = m.mint;
-    const holders = m.holders ?? 0;
-    const traders = m.traders24h ?? 0;
-    const twRaw = m.twitter?.trim() || null;
+  for (const m of shortlist) {
+    const hit = hitByMint.get(m.mint);
+    const twRaw = hit?.twitter?.trim() || null;
     const fromUrl = twRaw ? handleFromXUrl(twRaw) : null;
-    const stripped = twRaw
-      ? twRaw.replace(/^@/, "").replace(/.*\//, "") || null
-      : null;
+    const stripped = twRaw ? twRaw.replace(/^@/, "").replace(/.*\//, "") || null : null;
     const handleFromTw = fromUrl ?? stripped;
-
-    // Cost gate: need traction and/or a social handle before paying for full swarm.
-    const hasSocial = Boolean(handleFromTw);
-    if (!hasSocial && holders < MIN_HOLDERS_NO_TWITTER && traders < 5) continue;
-
     const handle =
-      handleFromTw ??
-      `token:${mint.slice(0, 6)}…${mint.slice(-4)}`;
+      handleFromTw ?? `token:${m.mint.slice(0, 6)}…${m.mint.slice(-4)}`;
 
     const note = [
-      `pump.fun migration via ${m.source}`,
-      m.migratedAt ? `at ${m.migratedAt}` : "recent",
-      holders ? `holders:${holders}` : null,
-      traders ? `traders24h:${traders}` : null,
-      m.marketCapUsd != null ? `mcap:$${Math.round(m.marketCapUsd)}` : null,
+      `launchScore=${m.result.score}`,
+      `pump.fun via ${hit?.source ?? "unknown"}`,
+      hit?.migratedAt ? `at ${hit.migratedAt}` : null,
+      m.result.reasons.slice(0, 4).join("; ") || null,
     ]
       .filter(Boolean)
-      .join(" ");
+      .join(" | ");
 
     candidatesToInsert.push({
       x_user_id: null,
       handle,
-      display_name: m.symbol ?? null,
-      token_address: mint,
+      display_name: hit?.symbol ?? null,
+      token_address: m.mint,
       chain: "solana",
       source_id: null,
       discovery_note: note,
@@ -188,16 +192,13 @@ export async function runMigrationDiscovery(hours = 1): Promise<{ scanned: numbe
     });
   }
 
-  if (candidatesToInsert.length === 0) {
-    logger.info("migration discovery: none passed cost gate", { scanned: hits.length, enriched: enriched.length });
-    return { scanned: hits.length, inserted: 0 };
-  }
-
   const mints = candidatesToInsert.map((c) => c.token_address as string).filter(Boolean);
   const { data: existingTokens } = mints.length
     ? await sb.from("candidates").select("token_address").in("token_address", mints)
     : { data: [] };
-  const seenTokens = new Set((existingTokens ?? []).map((r: { token_address: string }) => r.token_address));
+  const seenTokens = new Set(
+    (existingTokens ?? []).map((r: { token_address: string }) => r.token_address),
+  );
 
   const fresh = candidatesToInsert.filter(
     (c) => !c.token_address || !seenTokens.has(c.token_address as string),
@@ -219,7 +220,7 @@ export async function runMigrationDiscovery(hours = 1): Promise<{ scanned: numbe
 
   logger.info("migration discovery complete", {
     scanned: hits.length,
-    enriched: enriched.length,
+    shortlist: shortlist.length,
     inserted: newIds.length,
     source: hits[0]?.source,
   });
