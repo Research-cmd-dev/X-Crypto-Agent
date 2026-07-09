@@ -25,9 +25,11 @@ export interface SignalSourceRow {
 
 export interface CandidateRow {
   id: string;
-  x_user_id: string;
+  x_user_id: string | null;   // nullable to support token-first (pump.fun migration) discoveries
   handle: string;
   display_name: string | null;
+  token_address: string | null;
+  chain: string;
   source_id: string | null;
   discovery_note: string | null;
   status: CandidateStatus;
@@ -55,6 +57,7 @@ export interface ScoreRow {
   engagement: number;
   technical_depth: number;
   price: number;
+  onchain: number;
   overall: number;
   verdict: Verdict;
   created_at: string;
@@ -80,6 +83,7 @@ export interface LatestCandidateScoreRow {
   engagement: number;
   technical_depth: number;
   price: number;
+  onchain: number;
   overall: number;
   verdict: Verdict;
   created_at: string;

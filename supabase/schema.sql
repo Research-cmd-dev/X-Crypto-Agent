@@ -53,20 +53,26 @@ create trigger trg_signal_sources_updated_at
 
 -- ---- candidates ------------------------------------------------------------
 -- Discovered projects/accounts awaiting (or having completed) analysis.
+-- Supports dual discovery: X accounts (may have token) and pump.fun migrations (token-first, X optional).
 create table if not exists candidates (
   id             uuid primary key default gen_random_uuid(),
-  x_user_id      text not null,              -- X numeric user id (stable)
-  handle         text not null,              -- X handle without @
+  x_user_id      text,                       -- X numeric user id (stable); nullable for pure token migrations
+  handle         text not null,              -- X handle without @ (or token symbol as fallback for migrations)
   display_name   text,
+  token_address  text,                       -- Solana mint / contract for on-chain first discoveries
+  chain          text not null default 'solana',
   source_id      uuid references signal_sources(id) on delete set null,
-  discovery_note text,                       -- e.g. the tweet/query that surfaced it
+  discovery_note text,                       -- e.g. the tweet/query or migration context that surfaced it
   status         candidate_status not null default 'discovered',
   discovered_at  timestamptz not null default now(),
   analyzed_at    timestamptz,
   created_at     timestamptz not null default now(),
-  updated_at     timestamptz not null default now(),
-  unique (x_user_id)
+  updated_at     timestamptz not null default now()
 );
+
+-- Partial uniques so we can have token-only or X-only or both.
+create unique index if not exists idx_candidates_x_user on candidates(x_user_id) where x_user_id is not null;
+create unique index if not exists idx_candidates_token on candidates(chain, token_address) where token_address is not null;
 
 drop trigger if exists trg_candidates_updated_at on candidates;
 create trigger trg_candidates_updated_at
@@ -102,6 +108,7 @@ create table if not exists scores (
   engagement      integer not null default 0,
   technical_depth integer not null default 0,
   price           integer not null default 0,
+  onchain         integer not null default 0,
   overall         integer not null default 0,
   verdict         verdict not null,
   created_at      timestamptz not null default now()
@@ -111,6 +118,12 @@ create index if not exists idx_scores_candidate on scores(candidate_id);
 create index if not exists idx_scores_report on scores(report_id);
 create index if not exists idx_scores_verdict on scores(verdict);
 create index if not exists idx_scores_overall on scores(overall desc);
+
+-- Add onchain sub-score column (from post-merge on-chain traction support).
+-- Safe to re-run.
+do $$ begin
+  alter table scores add column if not exists onchain integer not null default 0;
+exception when duplicate_column then null; end $$;
 
 -- ---- flags -----------------------------------------------------------------
 -- Red flags surfaced during analysis.
@@ -135,7 +148,7 @@ select distinct on (s.candidate_id)
   s.candidate_id,
   s.id          as score_id,
   s.report_id,
-  s.profile, s.website, s.github, s.engagement, s.technical_depth, s.price,
+  s.profile, s.website, s.github, s.engagement, s.technical_depth, s.price, s.onchain,
   s.overall, s.verdict, s.created_at
 from scores s
 order by s.candidate_id, s.created_at desc;

@@ -7,7 +7,7 @@
  *   npm run analyze -- c0mputeAI
  *   npm run analyze -- https://x.com/c0mputeAI
  *
- * Requires ANTHROPIC_API_KEY (agents call Claude) and X_API_BEARER_TOKEN (real
+ * Requires XAI_API_KEY (agents call Grok) and X_API_BEARER_TOKEN (real
  * X API v2). Optional: GITHUB_TOKEN, BIRDEYE_API_KEY. Does NOT touch Supabase
  * — it runs the graph in-memory and prints the report; use the Trigger.dev
  * pipeline (`analyzeCandidate`) for a persisted run.
@@ -19,6 +19,7 @@ import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
 import { BitqueryProvider } from "@/lib/providers/bitquery";
 import { GmgnProvider } from "@/lib/providers/gmgn";
+import { SolanaTrackerProvider } from "@/lib/providers/solanatracker";
 import { runGraph } from "@/lib/orchestrator/graph";
 import type { AgentContext } from "@/lib/agents/types";
 
@@ -39,8 +40,8 @@ async function main() {
     console.error("Usage: npm run analyze -- <x-handle | x.com URL> [--save]");
     process.exit(1);
   }
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("Set ANTHROPIC_API_KEY — the agents call Claude.");
+  if (!process.env.XAI_API_KEY) {
+    console.error("Set XAI_API_KEY — the agents call Grok.");
     process.exit(1);
   }
   if (!process.env.X_API_BEARER_TOKEN) {
@@ -59,6 +60,7 @@ async function main() {
       price: new PriceProvider(),
       bitquery: new BitqueryProvider(),
       gmgn: new GmgnProvider(),
+      solanatracker: process.env.SOLANATRACKER_API_KEY ? new SolanaTrackerProvider() : undefined,
     },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null, contractAddress: null },

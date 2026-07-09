@@ -16,6 +16,7 @@ export interface ListOptions {
 /** A dashboard row: candidate + latest score + a touch of report data (market cap). */
 export interface CandidateListItem extends CandidateWithScore {
   marketCapUsd: number | null;
+  tokenAddress: string | null;
 }
 
 /** List candidates joined with their latest score (for the dashboard table). */
@@ -68,6 +69,7 @@ export async function listCandidatesWithScores(
       ...c,
       score,
       marketCapUsd: score ? (mcapByReport.get(score.report_id) ?? null) : null,
+      tokenAddress: c.token_address ?? null,
     };
   });
 

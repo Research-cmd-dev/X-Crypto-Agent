@@ -1,7 +1,7 @@
 /**
  * Dev runner: execute the agent graph on a sample candidate using the mock X
  * provider (no X API needed), then print the report + scores. The agents still
- * call Claude, so this requires ANTHROPIC_API_KEY (+ network). It does NOT touch
+ * call Grok, so this requires XAI_API_KEY (+ network). It does NOT touch
  * Supabase — it's a quick end-to-end smoke test of the orchestration + agents.
  *
  * Run with: `npm run scout`
@@ -11,12 +11,13 @@ import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
 import { BitqueryProvider } from "@/lib/providers/bitquery";
 import { GmgnProvider } from "@/lib/providers/gmgn";
+import { SolanaTrackerProvider } from "@/lib/providers/solanatracker";
 import { runGraph } from "@/lib/orchestrator/graph";
 import type { AgentContext } from "@/lib/agents/types";
 
 async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("Set ANTHROPIC_API_KEY to run the agents (they call Claude).");
+  if (!process.env.XAI_API_KEY) {
+    console.error("Set XAI_API_KEY to run the agents (they call Grok).");
     process.exit(1);
   }
   // X provider is mocked so this runs without a paid X API token.
@@ -32,6 +33,7 @@ async function main() {
       price: new PriceProvider(),
       bitquery: new BitqueryProvider(),
       gmgn: new GmgnProvider(),
+      solanatracker: process.env.SOLANATRACKER_API_KEY ? new SolanaTrackerProvider() : undefined,
     },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null, contractAddress: null },

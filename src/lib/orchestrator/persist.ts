@@ -1,5 +1,5 @@
 import { supabaseServer } from "@/lib/supabase/server";
-import { claudeModel } from "@/lib/anthropic/client";
+import { claudeModel } from "@/lib/llm/client"; // aliased to grokModel for compat during Grok migration
 import type { GraphResult } from "@/lib/orchestrator/state";
 
 /**
@@ -37,6 +37,7 @@ export async function persistResult(
     engagement: s.engagement,
     technical_depth: s.technicalDepth,
     price: s.price,
+    onchain: s.onchain,
     overall: s.overall,
     verdict: s.verdict,
   });

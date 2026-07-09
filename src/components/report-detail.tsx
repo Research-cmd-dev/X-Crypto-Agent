@@ -39,6 +39,9 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
           >
             @{candidate.handle}
           </a>
+          {candidate.token_address ? (
+            <span className="text-xs text-muted-foreground"> · {candidate.token_address}</span>
+          ) : null}
         </div>
         <div className="flex items-center gap-3">
           <VerdictBadge verdict={score?.verdict ?? null} />
@@ -64,6 +67,7 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
                 <ScoreBar label="Engagement" score={score.engagement} />
                 <ScoreBar label="Technical depth" score={score.technical_depth} />
                 <ScoreBar label="Price/liquidity" score={score.price} />
+                <ScoreBar label="Onchain" score={score.onchain ?? 0} />
               </CardContent>
             </Card>
           ) : null}
@@ -136,6 +140,21 @@ export function ReportDetail({ detail }: { detail: CandidateDetail }) {
                   <Fact k="Market cap" v={money(report.price.marketCapUsd)} />
                   <Fact k="24h volume" v={money(report.price.volume24hUsd)} />
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Onchain {report.onchain?.holderCount != null ? `· ${report.onchain.holderCount.toLocaleString()} holders` : ""}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Fact k="Holders" v={report.onchain?.holderCount?.toLocaleString() ?? "—"} />
+                <Fact k="Traders 24h" v={report.onchain?.traders24h?.toLocaleString() ?? "—"} />
+                <Fact k="Trades 24h" v={report.onchain?.trades24h?.toLocaleString() ?? "—"} />
+                <Fact k="First trade" v={report.onchain?.firstTradeAt ? new Date(report.onchain.firstTradeAt).toLocaleString() : "—"} />
+                <Fact k="Smart money" v={report.onchain?.smartMoney ?? "—"} />
+                <Fact k="Source" v={report.onchain?.source ?? "—"} />
+                <p className="text-muted-foreground">{report.onchain?.notes || ""}</p>
               </CardContent>
             </Card>
 

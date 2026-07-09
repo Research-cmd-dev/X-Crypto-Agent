@@ -3,10 +3,10 @@ import type { Onchain } from "@/lib/schema/analysis";
 
 /**
  * Deterministic on-chain agent. Using the contract address pulled from the
- * bio/posts (ctx.hints), it gathers early-traction signals from Bitquery
- * (holders, 24h traders, 24h trades, launch time) and best-effort smart-money /
- * security from GMGN. No LLM call — hard data. Pre-token projects yield a
- * neutral empty result rather than a penalty.
+ * bio/posts (ctx.hints), it gathers early-traction signals from Solana Tracker
+ * (holders) + Bitquery (traders/trades/launch when available) and best-effort
+ * smart-money / risk from GMGN (Agent API). No LLM call — hard data.
+ * Pre-token projects yield a neutral empty result rather than a penalty.
  */
 function empty(notes: string, source = "none"): Onchain {
   return {
@@ -29,39 +29,57 @@ export const onchainAgent: Agent = {
       return { onchain: empty("No contract address in bio/posts; treating as pre-token.") };
     }
 
-    const [bq, gm] = await Promise.all([
+    const st = ctx.providers.solanatracker ?? null;
+    const [bq, stHolders, gm] = await Promise.all([
       ctx.providers.bitquery.tokenOnchain(ca).catch(() => null),
+      st ? st.tokenHolders(ca).catch(() => null) : Promise.resolve(null),
       ctx.providers.gmgn.tokenInfo(ca).catch(() => null),
     ]);
 
     const short = `${ca.slice(0, 6)}…${ca.slice(-4)}`;
-    if (!bq || (bq.holderCount == null && bq.trades24h == null)) {
+    const holdersData: any = stHolders || bq;
+    const holderCount = holdersData?.total ?? holdersData?.holderCount ?? gm?.holderCount;
+    const traders = bq?.traders24h;
+    const trades = bq?.trades24h;
+
+    const gmSmart = gm?.smartMoney || (gm && (gm.smartMoneyCount || gm.riskScore));
+    if (holderCount == null && !traders && !trades && !gmSmart) {
       return { onchain: empty(`Contract ${short} found but no on-chain trading data yet.`) };
     }
 
     const parts: string[] = [];
-    if (bq.holderCount != null) parts.push(`${bq.holderCount.toLocaleString()} holders`);
-    if (bq.traders24h != null) parts.push(`${bq.traders24h.toLocaleString()} traders/24h`);
-    if (bq.trades24h != null) parts.push(`${bq.trades24h.toLocaleString()} trades/24h`);
+    if (holderCount != null) parts.push(`${holderCount.toLocaleString()} holders`);
+    if (traders != null) parts.push(`${traders.toLocaleString()} traders/24h`);
+    if (trades != null) parts.push(`${trades.toLocaleString()} trades/24h`);
     if (gm?.smartMoney) parts.push(`smart money: ${gm.smartMoney}`);
-    const source = gm?.smartMoney || gm?.top10HolderPct != null ? "bitquery+gmgn" : "bitquery";
+    if (gm?.riskScore != null) parts.push(`GMGN risk: ${gm.riskScore}`);
+    if (gm?.smartMoneyCount != null) parts.push(`GMGN sm: ${gm.smartMoneyCount}`);
+    if (gm?.holderCount != null && !holdersData?.holderCount) parts.push(`GMGN holders: ${gm.holderCount}`);
+
+    const hasGm = gm?.smartMoney || gm?.riskScore != null || gm?.smartMoneyCount != null || gm?.holderCount != null;
+    const source = hasGm
+      ? "gmgn" + (stHolders || bq ? "+tracker" : "")
+      : (stHolders ? "solanatracker" : "bitquery");
 
     ctx.log("onchain", {
       contract: short,
-      holders: bq.holderCount,
-      traders24h: bq.traders24h,
-      trades24h: bq.trades24h,
+      holders: holderCount,
+      traders24h: traders,
+      trades24h: trades,
+      gmgn: gm ? { smart: gm.smartMoney, risk: gm.riskScore, smCount: gm.smartMoneyCount, holders: gm.holderCount } : null,
     });
 
     return {
       onchain: {
-        holderCount: bq.holderCount,
-        traders24h: bq.traders24h,
-        trades24h: bq.trades24h,
-        firstTradeAt: bq.firstTradeAt,
+        holderCount: holderCount ?? null,
+        traders24h: traders ?? null,
+        trades24h: trades ?? null,
+        firstTradeAt: bq?.firstTradeAt ?? null,
         smartMoney: gm?.smartMoney ?? null,
         source,
         notes: parts.join(" · ") || "On-chain data resolved.",
+        riskScore: gm?.riskScore ?? null,
+        smartMoneyCount: gm?.smartMoneyCount ?? null,
       },
     };
   },

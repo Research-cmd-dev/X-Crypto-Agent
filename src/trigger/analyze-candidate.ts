@@ -10,7 +10,7 @@ export interface AnalyzeCandidatePayload {
 
 /**
  * Runs the multi-agent orchestrator for a single candidate. Concurrency-limited
- * to be gentle on the X / Anthropic APIs; retries are configured globally in
+ * to be gentle on the X / Grok (xAI) APIs; retries are configured globally in
  * trigger.config.ts.
  */
 export const analyzeCandidateTask = task({
@@ -18,7 +18,7 @@ export const analyzeCandidateTask = task({
   maxDuration: 600,
   queue: { concurrencyLimit: 4 },
   run: async (payload: AnalyzeCandidatePayload) => {
-    const { candidateId, freshnessMinutes = 360 } = payload;
+    const { candidateId, freshnessMinutes = 720 } = payload; // default 12h to minimize repeated Grok costs
 
     // Idempotency: skip if recently analyzed.
     const sb = supabaseServer();

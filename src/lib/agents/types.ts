@@ -3,6 +3,7 @@ import type { GithubProvider } from "@/lib/providers/github";
 import type { PriceProvider } from "@/lib/providers/price";
 import type { BitqueryProvider } from "@/lib/providers/bitquery";
 import type { GmgnProvider } from "@/lib/providers/gmgn";
+import type { SolanaTrackerProvider } from "@/lib/providers/solanatracker";
 import type { AnalysisReport } from "@/lib/schema/analysis";
 
 export interface Providers {
@@ -11,6 +12,7 @@ export interface Providers {
   price: PriceProvider;
   bitquery: BitqueryProvider;
   gmgn: GmgnProvider;
+  solanatracker?: SolanaTrackerProvider; // optional; used for graduated tokens, holders, etc.
 }
 
 export interface CandidateRef {

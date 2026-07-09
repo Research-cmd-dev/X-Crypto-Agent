@@ -125,6 +125,9 @@ export function CandidatesTable({ candidates }: { candidates: CandidateListItem[
                     <Link href={`/dashboard/${c.id}`} className="block">
                       <div className="font-medium">{c.display_name ?? c.handle}</div>
                       <div className="text-xs text-muted-foreground">@{c.handle}</div>
+                      {c.tokenAddress ? (
+                        <div className="text-[10px] text-muted-foreground/70 tabular-nums">CA: {c.tokenAddress.slice(0,6)}…{c.tokenAddress.slice(-4)}</div>
+                      ) : null}
                     </Link>
                   </TableCell>
                   <TableCell>

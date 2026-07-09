@@ -109,13 +109,16 @@ export const priceSchema = z.object({
 });
 
 export const onchainSchema = z.object({
-  holderCount: z.number().nullable().describe("Unique on-chain holders (Bitquery)"),
+  holderCount: z.number().nullable().describe("Unique on-chain holders (Bitquery/SolanaTracker)"),
   traders24h: z.number().nullable().describe("Unique active traders in the last 24h"),
   trades24h: z.number().nullable().describe("DEX trade count in the last 24h"),
   firstTradeAt: z.string().nullable().describe("ISO time of the first on-chain DEX trade (launch)"),
   smartMoney: z.string().nullable().describe("Smart-money / notable-buyer note (GMGN), or null"),
   source: z.string(),
   notes: z.string(),
+  // Additional from GMGN Agent API when key configured (risk, counts, etc.)
+  riskScore: z.number().nullable().optional(),
+  smartMoneyCount: z.number().nullable().optional(),
 });
 
 export const redFlagSeveritySchema = z.enum(["low", "med", "high"]);
