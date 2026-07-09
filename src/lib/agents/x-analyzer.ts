@@ -1,8 +1,8 @@
 import type { Agent, AgentContext, AgentSlice } from "@/lib/agents/types";
 import type { XTweet, XUser } from "@/lib/providers/x";
 import { xAnalyzerOutputSchema } from "@/lib/schema/analysis";
-import { researchText } from "@/lib/anthropic/research";
-import { parseStructured } from "@/lib/anthropic/structured";
+import { researchText } from "@/lib/llm/research";
+import { parseStructured } from "@/lib/llm/structured";
 import { X_ANALYZER_SYSTEM } from "@/lib/prompts/x-analyzer.system";
 import {
   extractUrls,
@@ -58,14 +58,14 @@ accounts mentioned in posts (dev/collaborator candidates): ${d.mentions.map((m) 
 
 function evidence(user: XUser, tweets: XTweet[], followers: XUser[]): string {
   const tweetLines = tweets
-    .slice(0, 15)
+    .slice(0, 8) // reduced sample size to lower token usage / Grok cost
     .map(
       (t) =>
-        `- (${t.likeCount}♥ ${t.repostCount}↻ ${t.replyCount}💬) ${t.text.replace(/\s+/g, " ").slice(0, 220)}`,
+        `- (${t.likeCount}♥ ${t.repostCount}↻ ${t.replyCount}💬) ${t.text.replace(/\s+/g, " ").slice(0, 180)}`,
     )
     .join("\n");
   const followerLines = followers
-    .slice(0, 40)
+    .slice(0, 20) // reduced to control prompt size/cost
     .map(
       (f) =>
         `- @${f.username} (${f.name})${f.verified ? " [verified]" : ""} — ${f.followersCount} followers`,
@@ -121,11 +121,30 @@ export const xAnalyzerAgent: Agent = {
     }
     ctx.xUser = user;
 
-    // 2. Gather timeline + follower sample.
+    // 2. Gather timeline + follower sample (needed for cheap filter and evidence).
     const [tweets, followers] = await Promise.all([
       providers.x.getUserTimeline(user.id, { maxResults: 25 }).catch(() => []),
       providers.x.getFollowersSample(user.id, { maxResults: 50 }).catch(() => []),
     ]);
+
+    // Cheap early filter before expensive research call (saves Grok cost on obvious low-signal accounts).
+    if ((user.followersCount ?? 0) < 300 && tweets.length < 3) {
+      return {
+        profile: {
+          followerCount: user.followersCount,
+          followingCount: user.followingCount,
+          followerRatio: user.followingCount ? (user.followersCount || 0) / user.followingCount : null,
+          followerSpikes: [],
+          followerQuality: { score: 10, notes: "Very low followers/activity - low priority for full analysis." },
+          notableFollowers: [],
+        },
+        account: { handle: user.username, userId: user.id, displayName: user.name, bio: user.description, verified: user.verified, createdAt: user.createdAt, location: user.location },
+        redFlags: [{ severity: "low", code: "low_activity", message: "Very low follower count and activity; skipped heavy research to control costs." }],
+        summary: `Low-activity X account @${user.username} (followers: ${user.followersCount}).`,
+        engagement: { momentumScore: 10, avgLikes: null, avgReposts: null, cadence: "low", notes: "Insufficient activity for deeper scoring." },
+        technicalDepth: { score: 10, notes: "Too little signal." },
+      };
+    }
 
     // 2b. Deterministically pull website / github / contract / dev candidates
     // from the bio + posts, and set hints NOW so downstream agents (website,
@@ -154,7 +173,7 @@ below — the GitHub owner and accounts mentioned in posts are strong candidates
 and any notable/high-signal followers or backers. Be concise and cite findings.
 
 ${ev}`,
-      maxUses: 4,
+      maxUses: 2, // lowered to control Grok tool / token costs while retaining signal
     }).catch((e) => {
       log("x-analyzer research failed", { error: String(e) });
       return "";

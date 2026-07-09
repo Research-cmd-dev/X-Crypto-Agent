@@ -1,4 +1,4 @@
-/** Raised when Claude declines a request (stop_reason === "refusal"). */
+/** Raised when the model declines a request (refusal / safety). Kept for compat. */
 export class AgentRefusalError extends Error {
   constructor(
     public readonly agent: string,

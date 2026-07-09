@@ -1,7 +1,7 @@
 import type { Agent, AgentContext, AgentSlice } from "@/lib/agents/types";
 import { githubAnalyzerOutputSchema } from "@/lib/schema/analysis";
-import { parseStructured } from "@/lib/anthropic/structured";
-import { researchText } from "@/lib/anthropic/research";
+import { parseStructured } from "@/lib/llm/structured";
+import { researchText } from "@/lib/llm/research";
 import { GITHUB_ANALYZER_SYSTEM } from "@/lib/prompts/github.system";
 import { parseGithubUrl, type RepoMetrics } from "@/lib/providers/github";
 
@@ -59,7 +59,7 @@ export const githubAnalyzerAgent: Agent = {
       prompt: `Assess the GitHub presence at ${url} for this crypto project.
 Judge how relevant, active, and genuine the engineering work is, and identify
 the core contributors.`,
-      maxUses: 3,
+      maxUses: 2, // cost control
     }).catch(() => "");
 
     const out = await parseStructured({

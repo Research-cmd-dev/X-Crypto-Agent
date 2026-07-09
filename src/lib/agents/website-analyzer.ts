@@ -1,7 +1,7 @@
 import type { Agent, AgentContext, AgentSlice } from "@/lib/agents/types";
 import { websiteAnalyzerOutputSchema } from "@/lib/schema/analysis";
-import { researchText } from "@/lib/anthropic/research";
-import { parseStructured } from "@/lib/anthropic/structured";
+import { researchText } from "@/lib/llm/research";
+import { parseStructured } from "@/lib/llm/structured";
 import { WEBSITE_ANALYZER_SYSTEM } from "@/lib/prompts/website.system";
 
 function domainOf(url: string): string | null {
@@ -42,7 +42,7 @@ Evaluate its design, documentation/whitepaper, roadmap, and team info, and list
 any GitHub links found on the site.`,
       allowFetch: true,
       allowedDomains: domain ? [domain] : undefined,
-      maxUses: 3,
+      maxUses: 2, // cost control
     }).catch((e) => {
       ctx.log("website research failed", { url, error: String(e) });
       return "";
