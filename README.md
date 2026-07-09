@@ -4,8 +4,10 @@ An autonomous system that **scans X (Twitter) for new crypto projects, runs deep
 multi-agent research, scores + flags them, stores everything in Supabase, and
 surfaces it in a review dashboard.**
 
-- **Discovery** — a scheduled job scans curated signal accounts + broad search
-  queries on X for new project accounts.
+- **Discovery** — scheduled jobs + CLI tools scan two vectors:
+  - X (curated accounts + search queries) for promising handles (pre- or post-token).
+  - pump.fun migrations (on-chain graduations) for newly live tokens.
+  Results feed the multi-agent analyzer + scoring. (Cadence configurable; current default 6h for Trigger.)
 - **Deep research** — a multi-agent "swarm" (the `x-account-crypto-analyzer`
   skill + website, GitHub, and price agents) investigates each candidate using
   the X API, GitHub, price feeds, and Claude's web search/fetch tools.
@@ -21,7 +23,8 @@ surfaces it in a review dashboard.**
 ```
                   ┌──────────────────── Trigger.dev ────────────────────┐
   signal_sources  │  discovery (cron + manual)                          │
-        │         │     scan X (queries + curated-account mentions)      │
+        │         │     • X: queries + curated accounts (30min)          │
+        │         │     • pump.fun migrations (30min) → token-first + X  │
         ▼         │     dedupe → insert candidates → fan out ↓           │
    candidates ───▶│  analyze-candidate (per candidate, concurrency-cap)  │
                   │     └─▶ orchestrator graph                           │
@@ -29,16 +32,18 @@ surfaces it in a review dashboard.**
                                          ▼
    ┌─────────────────── orchestrator (LangGraph-style) ───────────────────┐
    │  X Analyzer ──▶ ( Website ∥ GitHub ∥ Price ∥ Onchain ) ──▶ Scorer ──▶ persist │
+   │  (supports X-first or migration/token-first candidates)                         │
    │  (each node failure-tolerant; partial failures degrade, never abort)  │
    └──────────────────────────────────────────────────────────────────────┘
                                          ▼
         analysis_reports · scores · flags  ──▶  Dashboard (/dashboard)
 ```
 
-- **Agents** call **Claude** (`claude-opus-4-8`) in two phases: research with the
-  `web_search` / `web_fetch` server tools, then a structured-output synthesis
-  validated by Zod. Hard numbers (followers, stars, market cap) come from the X
-  API / GitHub / price feeds and are merged over the model's qualitative output.
+- **Agents** call **Grok** (xAI, e.g. `grok-4.3`) in two phases: research with the
+  built-in `web_search` server tool (real-time web + browsing), then a
+  structured-output synthesis validated by Zod (via function calling). Hard
+  numbers (followers, stars, market cap, on-chain) come from the X API / GitHub
+  / price feeds / Bitquery and are merged over the model's qualitative output.
 - The **`AnalysisReport` Zod schema** (`src/lib/schema/analysis.ts`) is the single
   source of truth — reused for runtime validation, the LLM's structured output,
   and TypeScript types.
@@ -46,7 +51,7 @@ surfaces it in a review dashboard.**
 ### Tech stack
 
 Next.js 15 (App Router) · TypeScript · Tailwind + shadcn/ui · Zod · Supabase
-(Postgres) · Trigger.dev v3 · `@anthropic-ai/sdk` · `@octokit/rest`.
+(Postgres) · Trigger.dev v3 · `openai` (for xAI/Grok) · `@octokit/rest`.
 
 ### Project layout
 
@@ -56,8 +61,8 @@ src/
   components/     shadcn UI + table / detail / score / verdict components
   lib/
     schema/       AnalysisReport Zod schema + scoring model
-    providers/    x (API v2 + mock), github (Octokit), price (Birdeye/DexScreener, by contract address), bitquery + gmgn (on-chain)
-    anthropic/    client, structured-output parse, web-tool research loop
+    providers/    x (API v2 + mock), github (Octokit), price (Birdeye/DexScreener), solanatracker (on-chain/migrations), bitquery (legacy), gmgn (smart money/risk via Agent API)
+    llm/          Grok/xAI client (openai sdk), researchText with web_search tool, parseStructured via function calls
     agents/       x-analyzer, website, github, price, onchain, scorer
     orchestrator/ graph (nodes), persist, analyzeCandidate entrypoint
     data/         dashboard data-access
@@ -72,7 +77,7 @@ scripts/          seed signal sources, mock dev runner
 
 - **Node 20+**
 - A **Supabase** project (Postgres)
-- An **Anthropic API key** (required)
+- An **xAI API key** (`XAI_API_KEY`, required) — get one at console.x.ai
 - An **X API v2 Bearer token** (required — a paid X API plan)
 - A **Trigger.dev** account/project (to run the jobs)
 - Optional: **GitHub token** (higher rate limits), **Birdeye API key** (early/
@@ -96,7 +101,7 @@ cp .env.example .env         # for scripts + Trigger.dev
 ```
 
 Fill in the values (see `.env.example` for the full list). Minimum to run the
-pipeline: `ANTHROPIC_API_KEY`, `X_API_BEARER_TOKEN`, `SUPABASE_URL`,
+pipeline: `XAI_API_KEY`, `X_API_BEARER_TOKEN`, `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and the Trigger.dev keys.
 
@@ -139,10 +144,17 @@ npm run dev
 
 - Click **Run discovery** in the dashboard, or
 - `curl -X POST http://localhost:3000/api/discovery/trigger`, or
-- wait for the schedule (every 6 hours).
+- wait for the schedule (X every 30min + pump.fun migrations every 30min; see `src/trigger/discovery.ts`).
+
+**Dual automatic discovery** (designed for the goal of frequent scans):
+- X side: scans queries + curated accounts every 30min.
+- Migration side: scans recent pump.fun graduations every 30min → resolves linked X (when available) or creates token-first candidate → full agent analysis (X + website + GitHub + on-chain) + scoring/rating.
+
+Both paths feed the same `analyze-candidate` queue + persist + dashboard. Use CLI tools (`npm run discover`, `npm run migrations`) for ad-hoc or local loops.
 
 Discovery inserts candidates and fans out analysis jobs; results appear in the
-dashboard as each candidate is analyzed.
+dashboard as each candidate is analyzed. The analyzer (X + website + GitHub + on-chain)
++ deterministic scorer produces the rating (High/Monitor/Avoid).
 
 ---
 
@@ -179,22 +191,16 @@ accepts a config override, so calibration can be swept without editing source.
 
 ### Calibrating fast (no API calls)
 
-The expensive part (research + synthesis) is cached once; scoring is then instant:
+The expensive part (research + synthesis) is cached once (`npm run analyze -- <h> --save`); scoring + structural rules are then instant and fully sweepable:
 
 ```bash
-npm run analyze -- c0mputeAI --save   # run the swarm once, cache the report (~2-3 min)
-npm run seed:fixtures                 # add synthetic good/bad anchor reports
-npm run score                         # re-score every cached report in ~0.5s
-
-# sweep variables instantly via env overrides — no edits, no API calls:
-RF_HIGH=0 RF_CAP=20 npm run score
-W_GITHUB=0.30 W_TECH=0.20 W_PROFILE=0.10 npm run score
-V_MONITOR=55 npm run score
+npm run seed:fixtures
+npm run score
+# live overrides (no edits):
+RF_HIGH=0 W_ONCHAIN=0.25 V_HIGH=68 npm run score
 ```
 
-Cached reports live in `fixtures/reports/*.json`. Overrides: weights
-`W_PROFILE W_WEBSITE W_GITHUB W_ENGAGEMENT W_TECH W_PRICE W_ONCHAIN`, penalties
-`RF_HIGH RF_MED RF_LOW`, `RF_DECAY`, `RF_CAP`, thresholds `V_HIGH V_MONITOR`.
+See the full guide (tiers, workflows, checklists, examples) in [docs/TESTING.md](docs/TESTING.md).
 
 ---
 
@@ -206,6 +212,8 @@ The whole pipeline runs standalone (no Supabase / Trigger.dev):
 |---|---|
 | `npm run scan [-- "<query>"]` | Scan X recent-search for fresh project accounts; rank by early-stage signal |
 | `npm run migrations [-- <hours>]` | pump.fun graduations (on-chain), enriched with holders/traders + the token's Twitter |
+| `npm run watch-migrations` | Real-time WS watcher for graduated tokens (Solana Tracker Datastream) |
+| `npm run watch-gmgn` | Real-time WS watcher for GMGN new pools, launches, smart money trades |
 | `npm run discover [-- --hours N]` | **Combine both vectors** (see below) |
 | `npm run analyze -- <handle\|url>` | Deep multi-agent + on-chain research on one account |
 | `npm run score` | Re-score cached reports instantly (calibration loop) |
@@ -219,20 +227,20 @@ traction with little social presence is flagged (⚠) as a likely bot/pump.
 ## Testing & verification
 
 ```bash
-npm run typecheck   # tsc --noEmit
-npm test            # vitest (scoring + orchestrator partial-failure tolerance)
-npm run build       # production Next.js build
+npm test            # vitest (25 tests: scoring, graph tolerance, extractors)
+npm run typecheck
+npm run build
 ```
 
-Quick end-to-end smoke test of the agent graph against **mock X data** (still
-calls Claude, so needs `ANTHROPIC_API_KEY`; does not touch Supabase):
+See the complete practical guide — current state, 4 test tiers, zero-cost scoring sweeps, common improvement workflows, and checklists — in **[docs/TESTING.md](docs/TESTING.md)**.
+
+Quick smoke (Mock X + real Grok, needs `XAI_API_KEY`):
 
 ```bash
 npm run scout
 ```
 
-Run the full swarm against one **real** X account (no Supabase), and optionally
-cache it for the scoring loop:
+Full real analysis + cache for the fast scoring loop:
 
 ```bash
 npm run analyze -- <handle | x.com URL> [--save]
@@ -249,6 +257,9 @@ npm run analyze -- <handle | x.com URL> [--save]
 - **Swap a data provider** — the X provider sits behind the `XProvider`
   interface (`src/lib/providers/x`), so the real API v2 client can be replaced
   with `MockXProvider` (used in tests) or another source.
+- **GMGN integration** — use the GMGN Agent API (docs at https://docs.gmgn.ai/index/gmgn-agent-api).
+  Install skills: `npx skills add GMGNAI/gmgn-skills`. Get API key by uploading pubkey at gmgn.ai/ai.
+  Enhances smart money, risk, holders, new token signals (complements SolanaTracker).
 - **Adjust the report shape** — extend the Zod schema in
   `src/lib/schema/analysis.ts`; types, validation, and LLM output update together.
 
@@ -256,12 +267,17 @@ npm run analyze -- <handle | x.com URL> [--save]
 
 ## Notes
 
-- **SDK version:** built against `@anthropic-ai/sdk` 0.70.x, where structured
-  outputs and web tools live under `client.beta.messages`. Structured output uses
-  `betaZodOutputFormat` (which requires **Zod 4**) + `messages.parse`. Web
-  research uses `web_search_20250305` / `web_fetch_20250910`.
-- **Cost:** each candidate triggers several Claude calls with web search. Use the
-  `analyze-candidate` queue concurrency limit and discovery cadence to control
-  spend. `CLAUDE_MODEL` can be pointed at a cheaper model if desired.
+- **LLM provider:** switched to xAI Grok via the OpenAI-compatible SDK
+  (`https://api.x.ai/v1`). Grok uses the Responses API for built-in `web_search`
+  (real-time research + browsing) and function calling for structured synthesis.
+  Set `XAI_API_KEY` and optionally `GROK_MODEL` (default `grok-4.3`).
+- **Cost control (key for production):** 
+  - Research + X data heavily cached (in-memory, short TTL) — avoids repeats.
+  - Pre-filters + early cheap triage (onchain/profile) before expensive Grok calls; skip web enrichment for weak signals.
+  - Reduced data volumes (samples, maxUses, tokens) and longer freshness (12h default).
+  - Cheaper default `GROK_MODEL` (grok-3); override per need. Deterministic agents (onchain/price) avoid LLM.
+  - In-graph early exits and profile-based skips.
+  Use `npm run score` (env overrides) for free tuning. Monitor `approx_llm_calls` in logs.
+  X MCP (hosted) recommended for dev (Cursor/Grok Build) — gives native X tools to the model with minimal setup.
 - **Compliance:** respect the X API terms and rate limits. The X client
   implements the happy path; add backoff/pagination for production volume.

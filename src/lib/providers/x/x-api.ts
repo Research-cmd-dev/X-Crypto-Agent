@@ -90,6 +90,27 @@ function toTweet(raw: RawTweet, usernameById?: Map<string, string>): XTweet {
 export class XApiProvider implements XProvider {
   private readonly token: string;
 
+  // Lightweight in-memory cache for X data (users, tweets) to slash API costs/rate limits.
+  // TTL is short because crypto signals move fast.
+  private static cache = new Map<string, { data: any; ts: number }>();
+  private static CACHE_TTL_MS = 1000 * 60 * 15; // 15 minutes
+
+  private static getFromCache<T>(key: string): T | null {
+    const hit = XApiProvider.cache.get(key);
+    if (hit && (Date.now() - hit.ts) < XApiProvider.CACHE_TTL_MS) {
+      return hit.data as T;
+    }
+    return null;
+  }
+  private static putInCache(key: string, data: any) {
+    XApiProvider.cache.set(key, { data, ts: Date.now() });
+    if (XApiProvider.cache.size > 400) {
+      // evict oldest
+      const oldestKey = XApiProvider.cache.keys().next().value;
+      if (oldestKey) XApiProvider.cache.delete(oldestKey);
+    }
+  }
+
   constructor(token = serverEnv().X_API_BEARER_TOKEN) {
     this.token = token;
   }
@@ -108,29 +129,55 @@ export class XApiProvider implements XProvider {
   }
 
   async getUserByHandle(handle: string): Promise<XUser | null> {
+    const key = `user:handle:${handle.toLowerCase()}`;
+    const cached = XApiProvider.getFromCache<XUser | null>(key);
+    if (cached !== undefined) return cached;
+
     const data = await this.get<{ data?: RawUser }>(
       `/users/by/username/${encodeURIComponent(handle.replace(/^@/, ""))}`,
       { "user.fields": USER_FIELDS },
     );
-    return data.data ? toUser(data.data) : null;
+    const result = data.data ? toUser(data.data) : null;
+    XApiProvider.putInCache(key, result);
+    return result;
   }
 
   async getUserById(id: string): Promise<XUser | null> {
+    const key = `user:id:${id}`;
+    const cached = XApiProvider.getFromCache<XUser | null>(key);
+    if (cached !== undefined) return cached;
+
     const data = await this.get<{ data?: RawUser }>(`/users/${id}`, {
       "user.fields": USER_FIELDS,
     });
-    return data.data ? toUser(data.data) : null;
+    const result = data.data ? toUser(data.data) : null;
+    XApiProvider.putInCache(key, result);
+    return result;
   }
 
   async getUserTimeline(userId: string, opts?: SearchOptions): Promise<XTweet[]> {
+    const max = Math.min(opts?.maxResults ?? 12, 100);
+    const key = `timeline:${userId}:${max}`;
+    const cached = XApiProvider.getFromCache<XTweet[]>(key);
+    if (cached) return cached;
+
     const data = await this.get<{ data?: RawTweet[] }>(`/users/${userId}/tweets`, {
       "tweet.fields": TWEET_FIELDS,
-      max_results: String(Math.min(opts?.maxResults ?? 25, 100)),
+      max_results: String(max),
     });
-    return (data.data ?? []).map((t) => toTweet(t));
+    const result = (data.data ?? []).map((t) => toTweet(t));
+    XApiProvider.putInCache(key, result);
+    return result;
   }
 
   async searchRecent(query: string, opts?: SearchOptions): Promise<XTweet[]> {
+    const max = Math.min(opts?.maxResults ?? 12, 100);
+    // Cache key includes query hash for safety
+    const qHash = query.slice(0, 80).replace(/\s+/g, '_');
+    const key = `search:${qHash}:${max}`;
+    const cached = XApiProvider.getFromCache<XTweet[]>(key);
+    if (cached) return cached;
+
     const data = await this.get<{
       data?: RawTweet[];
       includes?: { users?: RawUser[] };
@@ -139,19 +186,28 @@ export class XApiProvider implements XProvider {
       "tweet.fields": TWEET_FIELDS,
       expansions: "author_id",
       "user.fields": "username",
-      max_results: String(Math.min(opts?.maxResults ?? 25, 100)),
+      max_results: String(max),
     });
     const usernameById = new Map(
       (data.includes?.users ?? []).map((u) => [u.id, u.username]),
     );
-    return (data.data ?? []).map((t) => toTweet(t, usernameById));
+    const result = (data.data ?? []).map((t) => toTweet(t, usernameById));
+    XApiProvider.putInCache(key, result);
+    return result;
   }
 
   async getFollowersSample(userId: string, opts?: SearchOptions): Promise<XUser[]> {
+    const max = Math.min(opts?.maxResults ?? 20, 1000);
+    const key = `followers:${userId}:${max}`;
+    const cached = XApiProvider.getFromCache<XUser[]>(key);
+    if (cached) return cached;
+
     const data = await this.get<{ data?: RawUser[] }>(`/users/${userId}/followers`, {
       "user.fields": USER_FIELDS,
-      max_results: String(Math.min(opts?.maxResults ?? 50, 1000)),
+      max_results: String(max),
     });
-    return (data.data ?? []).map(toUser);
+    const result = (data.data ?? []).map(toUser);
+    XApiProvider.putInCache(key, result);
+    return result;
   }
 }

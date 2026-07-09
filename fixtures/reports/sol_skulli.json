@@ -1,0 +1,88 @@
+{
+  "account": {
+    "handle": "sol_skulli",
+    "userId": "1421328800109895680",
+    "displayName": "SKULLY",
+    "bio": "The war is over. But one soldier never went home. He waited. He watched. Now its time to wake him up. SKULLY is coming.",
+    "verified": false,
+    "createdAt": "2021-07-31T04:36:25.000Z",
+    "location": null
+  },
+  "profile": {
+    "followerCount": 69,
+    "followingCount": 3,
+    "followerRatio": 23,
+    "followerSpikes": [],
+    "followerQuality": {
+      "score": 20,
+      "notes": "Low quality mix of small accounts and crypto shillers; no organic builder or VC followers evident."
+    },
+    "notableFollowers": []
+  },
+  "website": {
+    "url": "https://verified.jup.ag/dashboard/FE9v2QJfNPmgNf5yGFu4MJvafVrPCtPCDRxeS5mipump",
+    "detected": true,
+    "score": 15,
+    "design": "Functional but basic/generic web-app UI (Jupiter/VRFD branding, navigation bar, wallet connect, sections for \"Token Data\" and \"Tweets\"). Templated platform layout with minimal visual polish or custom elements; UX is straightforward for verification/submission tasks but lacks project-specific branding or depth.",
+    "documentation": "None for the token/project. The page links to platform-level FAQ and APIs (on verified.jup.ag) explaining Jupiter verification mechanics, not token whitepapers, technical docs, or specs. No whitepaper or project documentation present.",
+    "roadmap": "Absent. No roadmap, timeline, milestones, or future plans mentioned.",
+    "teamInfo": "Anonymous/unknown for the token. The page is part of Jupiter's VRFD verification service (a known Solana ecosystem tool for token metadata/news verification and \"green checkmarks\"); the underlying token uses a standard mint address format and shows no named team or credentials.",
+    "githubLinksOnSite": [],
+    "notes": "This URL points to a specific token dashboard on Jupiter's verified.jup.ag (VRFD) platform, a public verification layer for Solana tokens integrated with Jupiter DEX tools. It displays token data, tweet curation, and verification status but contains no project-owned content, docs, code, or team details. This is a strong warning sign of a low-effort or memecoin-style token with no substantive website. The broader VRFD site focuses on submissions, news curation, and ecosystem trust signals rather than project development."
+  },
+  "github": {
+    "url": null,
+    "detected": false,
+    "score": 0,
+    "activity": "n/a",
+    "stars": null,
+    "relevance": "n/a",
+    "recentCommits": null,
+    "contributors": null,
+    "notes": "No GitHub presence detected from the X profile or website."
+  },
+  "developers": [],
+  "engagement": {
+    "momentumScore": 15,
+    "avgLikes": 12,
+    "avgReposts": 0,
+    "cadence": "Very low activity (only 7 tweets total)",
+    "notes": "Engagement minimal and consistent with tiny follower count; no signs of inflation."
+  },
+  "technicalDepth": {
+    "score": 0,
+    "notes": "Pure meme narrative with zero technical claims or artifacts."
+  },
+  "price": {
+    "token": "SKULLY",
+    "marketCapUsd": 1465899,
+    "volume24hUsd": 3583802.71,
+    "priceUsd": 0.001465,
+    "source": "dexscreener",
+    "notes": "DexScreener token lookup by address FE9v2Q…pump."
+  },
+  "onchain": {
+    "holderCount": 1932,
+    "traders24h": null,
+    "trades24h": null,
+    "firstTradeAt": null,
+    "smartMoney": null,
+    "source": "gmgn+tracker",
+    "notes": "1,932 holders · GMGN holders: 1931",
+    "riskScore": null,
+    "smartMoneyCount": null
+  },
+  "redFlags": [
+    {
+      "severity": "med",
+      "code": "no_github",
+      "message": "No GitHub presence detected."
+    },
+    {
+      "severity": "med",
+      "code": "low_follower_quality",
+      "message": "Follower base appears low quality (possible bots / purchased)."
+    }
+  ],
+  "summary": "Ultra-early Solana meme coin with a lone-soldier narrative, launched via pump.fun/Meteora. Extremely low follower count (69) and activity (7 tweets) with no GitHub, website, or identifiable devs. Pure meme play with no technical substance or red flags beyond typical early anonymity. High-risk speculative bet on organic narrative momentum."
+}

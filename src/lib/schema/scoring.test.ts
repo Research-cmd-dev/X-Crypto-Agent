@@ -3,6 +3,7 @@ import {
   computeScores,
   clampScore,
   priceContextScore,
+  onchainScore,
   toVerdict,
   redFlagPenalty,
   isPenaltyExempt,
@@ -150,6 +151,32 @@ describe("computeScores", () => {
       expect(s[k]).toBeGreaterThanOrEqual(0);
       expect(s[k]).toBeLessThanOrEqual(100);
     }
+  });
+});
+
+describe("onchainScore", () => {
+  it("is neutral (50) with no on-chain data (pre-token or missing)", () => {
+    expect(onchainScore({ holderCount: null, traders24h: null, trades24h: null, firstTradeAt: null, smartMoney: null, source: "none", notes: "" })).toBe(50);
+  });
+  it("rewards solid early holders + traders", () => {
+    const oc = { holderCount: 4200, traders24h: 850, trades24h: 12000, firstTradeAt: null, smartMoney: null, source: "bitquery", notes: "" };
+    expect(onchainScore(oc)).toBeGreaterThanOrEqual(70);
+  });
+  it("gives meaningful score even with only holders", () => {
+    expect(onchainScore({ holderCount: 650, traders24h: null, trades24h: null, firstTradeAt: null, smartMoney: null, source: "bitquery", notes: "" })).toBeGreaterThan(35);
+  });
+});
+
+describe("priceContextScore + full compute with onchain", () => {
+  it("price is neutral pre-token, onchain contributes", () => {
+    const report = makeReport({
+      price: { token: null, marketCapUsd: null, volume24hUsd: null, priceUsd: null, source: "none", notes: "" },
+      onchain: { holderCount: 3100, traders24h: 420, trades24h: 8000, firstTradeAt: "2026-06-01", smartMoney: null, source: "bitquery", notes: "" },
+    });
+    const s = computeScores(report);
+    expect(s.price).toBe(50);
+    expect(s.onchain).toBeGreaterThan(50);
+    expect(s.overall).toBeGreaterThanOrEqual(45);
   });
 });
 

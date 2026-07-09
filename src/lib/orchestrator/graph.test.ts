@@ -6,6 +6,7 @@ import { GithubProvider } from "@/lib/providers/github";
 import { PriceProvider } from "@/lib/providers/price";
 import { BitqueryProvider } from "@/lib/providers/bitquery";
 import { GmgnProvider } from "@/lib/providers/gmgn";
+import { SolanaTrackerProvider } from "@/lib/providers/solanatracker";
 
 function ctx(): AgentContext {
   return {
@@ -16,6 +17,7 @@ function ctx(): AgentContext {
       price: new PriceProvider(),
       bitquery: new BitqueryProvider(),
       gmgn: new GmgnProvider(),
+      solanatracker: process.env.SOLANATRACKER_API_KEY ? new SolanaTrackerProvider() : undefined,
     },
     xUser: null,
     hints: { websiteUrl: null, githubUrl: null, contractAddress: null },
@@ -82,5 +84,19 @@ describe("runGraph", () => {
     expect(result.scores.overall).toBeGreaterThanOrEqual(0);
     // Structural red flag for the missing github should appear.
     expect(result.report.redFlags.some((f) => f.code === "no_github")).toBe(true);
+  });
+
+  it("incorporates price + onchain slices and still succeeds with a degraded node", async () => {
+    const brokenPrice: Agent = {
+      name: "price-agent",
+      run: async () => {
+        throw new Error("price provider down");
+      },
+    };
+    const result = await runGraph(ctx(), fakeAgents({ price: brokenPrice }));
+    expect(result.errors.some((e) => e.node === "price-agent")).toBe(true);
+    expect(result.report.price.source).toBe("none"); // degraded default
+    expect(result.scores.onchain).toBeGreaterThan(50); // strong onchain from fake
+    expect(result.scores.overall).toBeGreaterThanOrEqual(0);
   });
 });

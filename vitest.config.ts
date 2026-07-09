@@ -10,5 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
+    // Coverage: run `npm i -D @vitest/coverage-v8` then `npm run test:coverage`.
+    // coverage: { provider: "v8", reporter: ["text", "html"] },
   },
 });

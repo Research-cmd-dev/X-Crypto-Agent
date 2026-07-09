@@ -17,7 +17,7 @@ export interface DiscoveredCandidate {
 }
 
 export interface ScanOptions {
-  /** Tweets to pull per source. */
+  /** Tweets to pull per source. Reduced for cost control. */
   perSource?: number;
   /** Cap mentioned handles resolved per curated account (rate-limit guard). */
   maxResolvePerAccount?: number;
@@ -43,7 +43,7 @@ export async function discoverFromSource(
   found: Map<string, DiscoveredCandidate>,
   opts: ScanOptions = {},
 ): Promise<void> {
-  const perSource = opts.perSource ?? 25;
+  const perSource = opts.perSource ?? 12; // lowered to control X API costs while keeping good signal
 
   if (source.kind === "query") {
     const tweets = await x.searchRecent(source.value, { maxResults: perSource });
@@ -68,7 +68,7 @@ export async function discoverFromSource(
   for (const t of tweets) for (const h of extractMentions(t.text, 20)) handles.add(h.toLowerCase());
 
   let resolved = 0;
-  const cap = opts.maxResolvePerAccount ?? 15;
+  const cap = opts.maxResolvePerAccount ?? 8; // lowered for cost
   for (const handle of handles) {
     if (handle === account.username.toLowerCase() || resolved >= cap) continue;
     const user = await x.getUserByHandle(handle).catch(() => null);

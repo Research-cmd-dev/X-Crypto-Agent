@@ -165,15 +165,33 @@ export async function runGraph(
 ): Promise<GraphResult> {
   const errors: NodeError[] = [];
 
+  // Cheap deterministic first (onchain/price) for early triage signal - avoids LLM if very weak.
+  const [priceSlice, onchainSlice] = await Promise.all([
+    runNode(agents.price, ctx, errors),
+    runNode(agents.onchain, ctx, errors),
+  ]);
+
+  // Quick cheap triage: if onchain very weak and no strong hints, we can still run X but skip heavy web research downstream.
+  const onchainData = onchainSlice?.onchain;
+  const weakOnchain = !onchainData || (
+    (onchainData.holderCount ?? 0) < 30 &&
+    (onchainData.traders24h ?? 0) < 5 &&
+    (onchainData.trades24h ?? 0) < 10
+  );
+
   // Node 1 — X analyzer (sequential: sets ctx.xUser + ctx.hints).
   const xSlice = await runNode(agents.x, ctx, errors);
 
-  // Nodes 2-5 — enrichment, parallel (depend on hints from node 1).
-  const [websiteSlice, githubSlice, priceSlice, onchainSlice] = await Promise.all([
-    runNode(agents.website, ctx, errors),
-    runNode(agents.github, ctx, errors),
-    runNode(agents.price, ctx, errors),
-    runNode(agents.onchain, ctx, errors),
+  // Additional cheap profile-based filter from X data (no extra LLM cost).
+  const prof = xSlice?.profile;
+  const weakProfile = prof && ((prof.followerCount ?? 0) < 500); // simple, no reliance on engagement which may come later
+
+  // Now decide enrichment: skip expensive web research for website/github if very weak signals (saves Grok calls).
+  const doWebEnrich = !weakOnchain && !weakProfile;
+
+  const [websiteSlice, githubSlice] = await Promise.all([
+    doWebEnrich ? runNode(agents.website, ctx, errors) : Promise.resolve({ website: { url: ctx.hints.websiteUrl, detected: !!ctx.hints.websiteUrl, score: 0, design: "n/a", documentation: "n/a", roadmap: "n/a", teamInfo: "n/a", githubLinksOnSite: [], notes: "Skipped for cost (weak signals)." } }),
+    doWebEnrich ? runNode(agents.github, ctx, errors) : Promise.resolve({ github: { url: ctx.hints.githubUrl, detected: !!ctx.hints.githubUrl, score: 0, activity: "n/a", stars: null, relevance: "n/a", recentCommits: null, contributors: null, notes: "Skipped for cost (weak signals)." } }),
   ]);
 
   // Assemble the full report, then score (final node).

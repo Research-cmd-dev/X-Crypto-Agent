@@ -17,7 +17,7 @@
  * synthetic anchors from `npm run seed:fixtures`). This re-scores each report's
  * existing flags — changing the structural-flag *rules* needs a fresh analyze.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import type { AnalysisReport } from "@/lib/schema/analysis";
 import {
@@ -26,6 +26,7 @@ import {
   DEFAULT_SCORING,
   type ScoringConfig,
 } from "@/lib/schema/scoring";
+import { makeReport } from "@/lib/schema/fixtures";
 
 const DIR = path.resolve("fixtures/reports");
 
@@ -78,11 +79,19 @@ const pad = (s: string | number, n: number) => String(s).padEnd(n);
 
 function main() {
   const { cfg, overrides } = configFromEnv();
-  const reports = loadReports();
+  let reports = loadReports();
   if (reports.length === 0) {
-    console.log(`No cached reports in ${path.relative(process.cwd(), DIR)}.`);
-    console.log("Create some:  npm run analyze -- <handle> --save   (or: npm run seed:fixtures)");
-    return;
+    // Auto-seed the synthetic anchors so the loop is immediately usable
+    mkdirSync(DIR, { recursive: true });
+    const anchors: Array<{ name: string; report: AnalysisReport }> = [
+      { name: "_synthetic-early-gem", report: makeReport({ account: { handle: "_synthetic-early-gem", displayName: "Early Gem" }, github: { url: "https://github.com/anon/gem", detected: true, score: 72, stars: 38, recentCommits: 55, contributors: 1 }, onchain: { holderCount: 5200, traders24h: 900, trades24h: 28000, firstTradeAt: null, smartMoney: null, source: "bitquery", notes: "" }, redFlags: [{ severity: "high", code: "pump_fun_token", message: "pump.fun" }, { severity: "high", code: "anonymous_team", message: "anon dev" }] }) },
+      { name: "_synthetic-empty-shell", report: makeReport({ account: { handle: "_synthetic-empty-shell", displayName: "Empty Shell" }, profile: { followerQuality: { score: 10, notes: "bots" } }, github: { url: null, detected: false, score: 0 }, website: { url: null, detected: false, score: 5 }, technicalDepth: { score: 5 }, redFlags: [{ severity: "high", code: "no_code", message: "no repo" }] }) },
+    ];
+    for (const a of anchors) {
+      writeFileSync(path.join(DIR, `${a.name}.json`), JSON.stringify(a.report, null, 2));
+    }
+    console.log("Seeded synthetic anchor reports (no real data present).");
+    reports = loadReports();
   }
 
   const wsum = Object.values(cfg.weights).reduce((a, b) => a + b, 0);

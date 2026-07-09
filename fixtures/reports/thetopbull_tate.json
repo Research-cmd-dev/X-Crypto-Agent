@@ -1,21 +1,21 @@
 {
   "account": {
-    "handle": "c0mputeAI",
-    "userId": null,
-    "displayName": null,
-    "bio": null,
-    "verified": null,
-    "createdAt": null,
+    "handle": "TheTopBull_tate",
+    "userId": "2071301956530851840",
+    "displayName": "The Top Bull",
+    "bio": "Only a Top G can make it. 🐂👑",
+    "verified": false,
+    "createdAt": "2026-06-28T18:38:18.000Z",
     "location": null
   },
   "profile": {
-    "followerCount": null,
-    "followingCount": null,
-    "followerRatio": null,
+    "followerCount": 0,
+    "followingCount": 11,
+    "followerRatio": 0,
     "followerSpikes": [],
     "followerQuality": {
       "score": 0,
-      "notes": "Not analyzed."
+      "notes": "Zero followers; brand-new inactive account with no activity or detectable audience."
     },
     "notableFollowers": []
   },
@@ -44,14 +44,14 @@
   "developers": [],
   "engagement": {
     "momentumScore": 0,
-    "avgLikes": null,
-    "avgReposts": null,
-    "cadence": "n/a",
-    "notes": "Not analyzed."
+    "avgLikes": 0,
+    "avgReposts": 0,
+    "cadence": "none",
+    "notes": "No tweets or activity recorded."
   },
   "technicalDepth": {
     "score": 0,
-    "notes": "Not analyzed."
+    "notes": "No posts, code, product, or technical signals of any kind."
   },
   "price": {
     "token": null,
@@ -72,6 +72,11 @@
   },
   "redFlags": [
     {
+      "severity": "high",
+      "code": "no_activity",
+      "message": "Zero tweets, zero followers, no links or detectable project footprint; completely inactive shell account."
+    },
+    {
       "severity": "med",
       "code": "no_github",
       "message": "No GitHub presence detected."
@@ -87,5 +92,5 @@
       "message": "Follower base appears low quality (possible bots / purchased)."
     }
   ],
-  "summary": "Scored 6/100 (Avoid). No GitHub. No website."
+  "summary": "Completely inactive brand-new account (created 2026-06-28) with 0 followers, 0 tweets, and no links, GitHub, or on-chain signals. No evidence of any project, builders, or substance. High risk of being abandoned or placeholder with zero upside potential at present."
 }
