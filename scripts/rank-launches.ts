@@ -48,6 +48,12 @@ async function loadSeeds(sinceISO: string, limit: number): Promise<SeedGraduatio
         twitter: g.twitter,
         marketCapUsd: g.marketCapUsd,
         liquidityUsd: g.liquidityUsd,
+        holders: g.holders,
+        riskScore: g.riskScore,
+        top10HolderPct: g.top10HolderPct,
+        volume24hUsd: g.volume24hUsd,
+        mintAuthority: g.mintAuthority,
+        freezeAuthority: g.freezeAuthority,
       }));
     }
   }

@@ -20,6 +20,8 @@
     "scan": "tsx scripts/scan.ts",
     "migrations": "tsx scripts/migrations.ts",
     "rank-launches": "tsx scripts/rank-launches.ts",
+    "backfill-outcomes": "tsx scripts/backfill-outcomes.ts",
+    "check-env": "tsx scripts/check-env.ts",
     "discover": "tsx scripts/discover.ts",
     "analyze": "tsx scripts/analyze.ts",
     "score": "tsx scripts/score.ts",

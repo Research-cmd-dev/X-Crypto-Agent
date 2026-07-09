@@ -107,6 +107,11 @@ interface MigrationHit {
   liquidityUsd?: number;
   holders?: number | null;
   traders24h?: number | null;
+  riskScore?: number | null;
+  top10HolderPct?: number | null;
+  volume24hUsd?: number | null;
+  mintAuthority?: string | null;
+  freezeAuthority?: string | null;
   source: "solanatracker" | "bitquery";
 }
 
@@ -139,6 +144,11 @@ export async function runMigrationDiscovery(hours = 1): Promise<{ scanned: numbe
     liquidityUsd: h.liquidityUsd,
     holders: h.holders,
     traders24h: h.traders24h,
+    riskScore: h.riskScore,
+    top10HolderPct: h.top10HolderPct,
+    volume24hUsd: h.volume24hUsd,
+    mintAuthority: h.mintAuthority,
+    freezeAuthority: h.freezeAuthority,
   }));
 
   // Feature pack: ST/price primary; GMGN optional (skipped if no key).
@@ -240,6 +250,12 @@ async function loadRecentMigrations(sinceISO: string, limit: number): Promise<Mi
         twitter: g.twitter,
         marketCapUsd: g.marketCapUsd,
         liquidityUsd: g.liquidityUsd,
+        holders: g.holders,
+        riskScore: g.riskScore,
+        top10HolderPct: g.top10HolderPct,
+        volume24hUsd: g.volume24hUsd,
+        mintAuthority: g.mintAuthority,
+        freezeAuthority: g.freezeAuthority,
         source: "solanatracker" as const,
       }));
     }

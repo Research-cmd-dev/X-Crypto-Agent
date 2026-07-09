@@ -152,3 +152,46 @@ select distinct on (s.candidate_id)
   s.overall, s.verdict, s.created_at
 from scores s
 order by s.candidate_id, s.created_at desc;
+
+-- ---- launch_snapshots ------------------------------------------------------
+-- T0 launchScore features + later outcome labels for calibrating the funnel.
+-- Independent of multi-agent analysis (can exist for token-only graduates).
+create table if not exists launch_snapshots (
+  id               uuid primary key default gen_random_uuid(),
+  mint             text not null,
+  chain            text not null default 'solana',
+  graduated_at     timestamptz,
+  symbol           text,
+  -- T0 features / score
+  launch_score     integer,
+  vetoed           boolean not null default false,
+  features         jsonb not null default '{}'::jsonb,  -- LaunchFeatures + reasons
+  price_t0_usd     double precision,
+  -- Outcomes (filled by backfill / forward jobs)
+  price_1h_usd     double precision,
+  price_6h_usd     double precision,
+  price_24h_usd    double precision,
+  ret_1h           double precision,
+  ret_6h           double precision,
+  ret_24h          double precision,
+  success_24h      boolean,
+  outcome_label    text,  -- unknown | rugged | weak | ok | strong
+  outcome_source   text,  -- birdeye_unix | birdeye_ohlcv | solanatracker | ...
+  outcomes_at      timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create unique index if not exists idx_launch_snapshots_mint
+  on launch_snapshots(chain, mint);
+create index if not exists idx_launch_snapshots_graduated
+  on launch_snapshots(graduated_at desc nulls last);
+create index if not exists idx_launch_snapshots_score
+  on launch_snapshots(launch_score desc nulls last);
+create index if not exists idx_launch_snapshots_label
+  on launch_snapshots(outcome_label);
+
+drop trigger if exists trg_launch_snapshots_updated_at on launch_snapshots;
+create trigger trg_launch_snapshots_updated_at
+  before update on launch_snapshots
+  for each row execute function set_updated_at();

@@ -1,15 +1,13 @@
 /**
  * Collect LaunchFeatures for a graduated mint from available providers.
  *
- * Primary (preferred, no LLM):
- *   - Solana Tracker: holders, symbol, twitter, list mcap/liq
+ * Primary (no LLM):
+ *   - Solana Tracker: holders, top10, risk, renounce-ish authorities, mcap/liq/vol, twitter
  *   - Price (Birdeye / DexScreener): mcap, volume, liquidity, twitter
- *   - Bitquery (optional): traders24h, trades24h, holders fallback
+ *   - Bitquery (optional): traders24h, trades24h
  *
- * Optional enrichment (swap-friendly):
- *   - GMGN: risk, top10, renounce, smart money — only if GMGN_API_KEY set.
- *     Can be replaced later with another security/smart-money provider without
- *     changing computeLaunchScore.
+ * Optional:
+ *   - GMGN: risk/smart-money if key set (can be omitted; ST covers most safety fields now)
  */
 import { SolanaTrackerProvider } from "@/lib/providers/solanatracker";
 import { PriceProvider } from "@/lib/providers/price";
@@ -28,17 +26,26 @@ export interface SeedGraduation {
   holders?: number | null;
   traders24h?: number | null;
   trades24h?: number | null;
+  riskScore?: number | null;
+  top10HolderPct?: number | null;
+  volume24hUsd?: number | null;
+  mintAuthority?: string | null;
+  freezeAuthority?: string | null;
 }
 
 export interface CollectOptions {
-  /** Skip optional GMGN even if key present (faster / offline). */
   skipGmgn?: boolean;
-  /** Skip Bitquery traders lookup. */
   skipBitquery?: boolean;
   st?: SolanaTrackerProvider | null;
   price?: PriceProvider | null;
   bitquery?: BitqueryProvider | null;
   gmgn?: GmgnProvider | null;
+}
+
+function renounced(auth: string | null | undefined): boolean | null {
+  if (auth === undefined) return null;
+  if (auth == null || auth === "" || auth === "null") return true;
+  return false;
 }
 
 export async function collectLaunchFeatures(
@@ -71,13 +78,17 @@ export async function collectLaunchFeatures(
   let trades24h = seed.trades24h ?? null;
   let liquidityUsd = seed.liquidityUsd ?? null;
   let marketCapUsd = seed.marketCapUsd ?? null;
-  let volume24hUsd: number | null = null;
+  let volume24hUsd = seed.volume24hUsd ?? null;
   let twitter = seed.twitter ?? null;
-  let mintRenounced: boolean | null = null;
-  let freezeRenounced: boolean | null = null;
-  let top10HolderPct: number | null = null;
-  let riskScore: number | null = null;
+  let mintRenounced = renounced(seed.mintAuthority);
+  let freezeRenounced = renounced(seed.freezeAuthority);
+  let top10HolderPct = seed.top10HolderPct ?? null;
+  let riskScore = seed.riskScore ?? null;
   let smartMoneyCount: number | null = null;
+
+  if (seed.holders != null || seed.riskScore != null || seed.top10HolderPct != null) {
+    sources.push("seed");
+  }
 
   const tasks: Promise<void>[] = [];
 
@@ -88,18 +99,31 @@ export async function collectLaunchFeatures(
           st.tokenHolders(seed.mint).catch(() => null),
           st.tokenInfo(seed.mint).catch(() => null),
         ]);
+        let used = false;
         if (h?.total != null) {
           holders = holders ?? h.total;
-          sources.push("solanatracker");
+          used = true;
+        }
+        if (h?.top10Pct != null && top10HolderPct == null) {
+          top10HolderPct = h.top10Pct;
+          used = true;
         }
         if (info) {
+          used = true;
           if (info.twitter && !twitter) twitter = info.twitter;
-          // pools may carry liq; best-effort
+          holders = holders ?? info.holders ?? null;
+          marketCapUsd = marketCapUsd ?? info.marketCapUsd ?? null;
+          liquidityUsd = liquidityUsd ?? info.liquidityUsd ?? null;
+          volume24hUsd = volume24hUsd ?? info.volume24hUsd ?? null;
+          riskScore = riskScore ?? info.riskScore ?? null;
+          top10HolderPct = top10HolderPct ?? info.top10HolderPct ?? null;
+          if (info.mintRenounced != null) mintRenounced = info.mintRenounced;
+          if (info.freezeRenounced != null) freezeRenounced = info.freezeRenounced;
           const pool0 = info.pools?.[0];
           const liq = pool0?.liquidity?.usd ?? pool0?.liquidityUsd;
           if (typeof liq === "number" && liquidityUsd == null) liquidityUsd = liq;
-          if (!sources.includes("solanatracker")) sources.push("solanatracker");
         }
+        if (used) sources.push("solanatracker");
       })(),
     );
   }
@@ -111,7 +135,7 @@ export async function collectLaunchFeatures(
         if (ov) {
           sources.push("birdeye");
           marketCapUsd = marketCapUsd ?? ov.marketCapUsd;
-          volume24hUsd = ov.volume24hUsd ?? null;
+          volume24hUsd = volume24hUsd ?? ov.volume24hUsd ?? null;
           liquidityUsd = liquidityUsd ?? ov.liquidityUsd;
           if (ov.twitter && !twitter) twitter = ov.twitter;
           return;
@@ -120,7 +144,7 @@ export async function collectLaunchFeatures(
         if (p && p.source !== "none") {
           sources.push(p.source);
           marketCapUsd = marketCapUsd ?? p.marketCapUsd;
-          volume24hUsd = p.volume24hUsd ?? null;
+          volume24hUsd = volume24hUsd ?? p.volume24hUsd ?? null;
         }
       })(),
     );
@@ -145,10 +169,10 @@ export async function collectLaunchFeatures(
         const g = await gmgn.tokenInfo(seed.mint).catch(() => null);
         if (!g) return;
         sources.push("gmgn");
-        mintRenounced = g.mintRenounced;
-        freezeRenounced = g.freezeRenounced;
-        top10HolderPct = g.top10HolderPct;
-        riskScore = g.riskScore ?? null;
+        if (g.mintRenounced != null) mintRenounced = g.mintRenounced;
+        if (g.freezeRenounced != null) freezeRenounced = g.freezeRenounced;
+        top10HolderPct = top10HolderPct ?? g.top10HolderPct;
+        riskScore = riskScore ?? g.riskScore ?? null;
         smartMoneyCount = g.smartMoneyCount ?? null;
         holders = holders ?? g.holderCount ?? null;
       })(),
@@ -180,13 +204,12 @@ export async function collectLaunchFeatures(
     riskScore,
     smartMoneyCount,
     hasTwitter: Boolean(twHandle),
-    followers: null, // optional X enrich later for top-K only
+    followers: null,
     graduatedAt: seed.graduatedAt ?? null,
     sources: [...new Set(sources)],
   };
 }
 
-/** Concurrency-limited map for batch feature collection. */
 export async function collectLaunchFeaturesBatch(
   seeds: SeedGraduation[],
   concurrency = 5,

@@ -126,4 +126,83 @@ export class PriceProvider {
       notes: `DexScreener token lookup by address ${short(address)}.`,
     };
   }
+
+  /**
+   * Birdeye OHLCV for a mint — used for outcome backfill (price at T+Nh).
+   * `type`: 1m | 5m | 15m | 1h | 4h | 1d
+   * time_from / time_to: unix seconds.
+   */
+  async ohlcv(
+    mint: string,
+    opts: { type?: string; time_from: number; time_to: number },
+  ): Promise<Array<{ unixTime: number; o: number; h: number; l: number; c: number; v: number }>> {
+    if (!this.birdeyeKey) return [];
+    const type = opts.type ?? "1h";
+    const url = new URL("https://public-api.birdeye.so/defi/ohlcv");
+    url.searchParams.set("address", mint);
+    url.searchParams.set("type", type);
+    url.searchParams.set("time_from", String(opts.time_from));
+    url.searchParams.set("time_to", String(opts.time_to));
+    const res = await fetch(url.toString(), {
+      headers: { "X-API-KEY": this.birdeyeKey, "x-chain": "solana", accept: "application/json" },
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: { items?: Array<{ unixTime?: number; o?: number; h?: number; l?: number; c?: number; v?: number }> };
+    };
+    if (!body.success || !body.data?.items) return [];
+    return body.data.items
+      .filter((i) => i.unixTime != null && i.c != null)
+      .map((i) => ({
+        unixTime: i.unixTime as number,
+        o: i.o ?? i.c!,
+        h: i.h ?? i.c!,
+        l: i.l ?? i.c!,
+        c: i.c as number,
+        v: i.v ?? 0,
+      }));
+  }
+
+  /**
+   * Historical USD price near a unix timestamp (seconds).
+   * Tries Birdeye historical_price_unix, then falls back to OHLCV close.
+   */
+  async priceAtUnix(mint: string, unixSec: number): Promise<{ priceUsd: number; source: string } | null> {
+    if (!this.birdeyeKey) return null;
+
+    try {
+      const url = new URL("https://public-api.birdeye.so/defi/historical_price_unix");
+      url.searchParams.set("address", mint);
+      url.searchParams.set("unixtime", String(unixSec));
+      const res = await fetch(url.toString(), {
+        headers: { "X-API-KEY": this.birdeyeKey, "x-chain": "solana", accept: "application/json" },
+      });
+      if (res.ok) {
+        const body = (await res.json()) as { success?: boolean; data?: { value?: number; price?: number } };
+        const v = body.data?.value ?? body.data?.price;
+        if (body.success && typeof v === "number" && v > 0) {
+          return { priceUsd: v, source: "birdeye_unix" };
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+
+    // ±2h window of 15m candles
+    const candles = await this.ohlcv(mint, {
+      type: "15m",
+      time_from: unixSec - 2 * 3600,
+      time_to: unixSec + 2 * 3600,
+    });
+    const c = candles.length
+      ? candles.reduce((best, k) => {
+          const d = Math.abs(k.unixTime - unixSec);
+          if (!best || d < best.d) return { c: k.c, d };
+          return best;
+        }, null as { c: number; d: number } | null)?.c
+      : null;
+    if (c != null && c > 0) return { priceUsd: c, source: "birdeye_ohlcv" };
+    return null;
+  }
 }
